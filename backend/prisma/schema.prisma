@@ -1,0 +1,259 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ORG_ADMIN
+  STAFF
+}
+
+enum OrgType {
+  GYM
+  TUITION_CENTER
+  ACADEMY
+  PG
+  HOSTEL
+  RENTAL
+}
+
+enum DurationType {
+  DAYS_30
+  CUSTOM_MONTHLY
+}
+
+enum CollectionDayType {
+  FIRST_DAY_OF_MONTH
+  LAST_DAY_OF_MONTH
+  CUSTOM_DAY_OF_MONTH
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  FROZEN
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  OTHER
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  DROPDOWN
+  CHECKBOX
+  MULTI_LINE
+}
+
+enum SubscriptionPlanType {
+  NORMAL
+  CREDIT
+}
+
+model Organization {
+  id                    String   @id @default(uuid())
+  name                  String
+  type                  OrgType  @default(GYM)
+  whatsappAppId         String?
+  whatsappPhoneNumberId String?
+  whatsappAccessToken   String?
+  whatsappBusinessId    String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  users                  User[]
+  plans                  Plan[]
+  members                Member[]
+  expenses               Expense[]
+  expenseCategories      ExpenseCategory[]
+  customFieldDefinitions CustomFieldDefinition[]
+  subscriptionCredit     SubscriptionCredit?
+  whatsAppTemplates      WhatsAppTemplate[]
+}
+
+model User {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  email          String       @unique
+  passwordHash   String
+  phone          String?
+  role           Role         @default(ORG_ADMIN)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Plan {
+  id                String            @id @default(uuid())
+  organizationId    String
+  name              String
+  price             Float
+  durationDays      Int               @default(30)
+  durationType      DurationType      @default(DAYS_30)
+  frequencyMonths   Int               @default(1) // 1, 3, 6, 12 months
+  collectionDayType CollectionDayType @default(FIRST_DAY_OF_MONTH)
+  customDayNumber   Int? // e.g. 5, 10, 15
+  description       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  groups       Group[]
+  members      Member[]
+}
+
+model Group {
+  id        String   @id @default(uuid())
+  planId    String
+  name      String // e.g., "10 A", "Morning Batch"
+  schedule  String? // e.g., "7:00 AM - 8:00 AM"
+  capacity  Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plan    Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  members Member[]
+}
+
+model Member {
+  id             String    @id @default(uuid())
+  organizationId String
+  planId         String?
+  groupId        String?
+  fullName       String
+  phone          String
+  joiningDate    DateTime  @default(now())
+  duration       String // e.g., "30 Days" or "Monthly"
+  dateOfBirth    DateTime?
+  notes          String?
+  customFieldsData Json? // Dynamic key-value custom fields
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan             Plan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
+  group            Group?            @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  paymentSchedules PaymentSchedule[]
+  transactions     Transaction[]
+}
+
+model PaymentSchedule {
+  id        String        @id @default(uuid())
+  memberId  String
+  monthYear String // e.g., "2026-07"
+  dueDate   DateTime
+  amount    Float
+  status    PaymentStatus @default(UNPAID)
+  frozenAt  DateTime?
+  notes     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  member       Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Transaction {
+  id                String           @id @default(uuid())
+  memberId          String
+  paymentScheduleId String?
+  amountPaid        Float
+  paymentMethod     PaymentMethod    @default(CASH)
+  paymentDate       DateTime         @default(now())
+  receiptUrl        String?
+  notes             String?
+  createdAt         DateTime         @default(now())
+
+  member          Member           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  paymentSchedule PaymentSchedule? @relation(fields: [paymentScheduleId], references: [id], onDelete: SetNull)
+}
+
+model ExpenseCategory {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  isCustom       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+}
+
+model Expense {
+  id             String          @id @default(uuid())
+  organizationId String
+  categoryId     String
+  title          String
+  amount         Float
+  expenseDate    DateTime        @default(now())
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+model CustomFieldDefinition {
+  id             String          @id @default(uuid())
+  organizationId String
+  fieldName      String
+  fieldType      CustomFieldType @default(TEXT)
+  options        String[]
+  isRequired     Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model SubscriptionCredit {
+  id               String               @id @default(uuid())
+  organizationId   String               @unique
+  planType         SubscriptionPlanType @default(NORMAL)
+  subscriptionName String               @default("Basic")
+  expiresAt        DateTime?
+  purchasedCredits Int                  @default(0)
+  usedCredits      Int                  @default(0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model WhatsAppTemplate {
+  id             String       @id @default(uuid())
+  organizationId String
+  templateType   String
+  messageText    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model AppSubscriptionPlan {
+  id             String   @id @default(uuid())
+  name           String   // e.g. "Free trial 30 days", "Plus", "Max", "Max+"
+  price          Float    // e.g. 0, 399, 699, 999
+  tag            String?  // e.g. "Default", "Popular"
+  description    String   // e.g. "All features unlocked for one month"
+  durationMonths Int      @default(1)
+  isFreeTrial    Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
