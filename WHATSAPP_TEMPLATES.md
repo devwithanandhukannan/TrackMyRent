@@ -1,129 +1,129 @@
-# 📱 RentTrack — ഔദ്യോഗിക WhatsApp സന്ദേശ ടെംപ്ലേറ്റുകൾ (Official WhatsApp Templates)
+# 📱 RentTrack — Official WhatsApp Message Templates (Meta Cloud API)
 
-Meta Business API-ൽ അംഗീകാരം (Approval) നേടുന്നതിനും ആപ്പിൽ നിന്ന് ഓട്ടോമാറ്റിക്കായി സന്ദേശങ്ങൾ അയക്കുന്നതിനും താഴെ പറയുന്ന **6 ടെംപ്ലേറ്റുകൾ** ഉപയോഗിക്കാം.
-
----
-
-### 🔑 ① Admin Login OTP Template (അഡ്മിൻ ലോഗിൻ ഒ.ടി.പി സന്ദേശം)
-
-* **ഉദ്ദേശ്യം**: ഫെസിലിറ്റി അഡ്മിൻ മൊബൈൽ നമ്പർ ഉപയോഗിച്ച് ആപ്പിൽ ലോഗിൻ ചെയ്യുമ്പോൾ ലഭിക്കുന്ന വെരിഫിക്കേഷൻ കോഡ്.
-* **Meta കാറ്റഗറി**: `AUTHENTICATION`
-* **വേരിയബിളുകൾ (Variables)**:
-  * `{{1}}` : 6 അക്ക ഒ.ടി.പി കോഡ് (OTP Code)
-  * `{{2}}` : കാലാവധി സമയം മിനിറ്റിൽ (Validity in minutes)
-* **മലയാളം സന്ദേശ രൂപം (Message Format)**:
-
-> നിങ്ങളുടെ RentTrack വെരിഫിക്കേഷൻ കോഡ് **{{1}}** ആണ്.  
-> ഈ കോഡ് **{{2}}** മിനിറ്റ് വരെ മാത്രമേ സാധുതയുള്ളൂ. സുരക്ഷ മുൻനിർത്തി ഈ ഒ.ടി.പി മറ്റാരുമായും പങ്കിടരുത്.  
-> 
-> — RentTrack സുരക്ഷിത ലോഗിൻ
+Comprehensive guide and exact message formats for submitting and approving WhatsApp message templates on the **Meta WhatsApp Business API**, as well as using them inside **RentTrack**.
 
 ---
 
-### 💰 ② Rent / Fee Reminder with Razorpay UPI Link (വാടക കുടിശ്ശിക റിമൈൻഡർ)
+### 🔑 1. Admin Login OTP Template
 
-* **ഉദ്ദേശ്യം**: വാടക ഡ്യൂ തീയതിക്ക് മുൻപോ ശേഷമോ പണമടയ്ക്കാനുള്ള Razorpay ലിങ്ക് സഹിതം അയക്കുന്ന റിമൈൻഡർ.
-* **Meta കാറ്റഗറി**: `UTILITY`
-* **വേരിയബിളുകൾ (Variables)**:
-  * `{{1}}` : മെമ്പറുടെ പേര് (Member Name)
-  * `{{2}}` : മാസം (Billing Month)
-  * `{{3}}` : അടയ്ക്കാനുള്ള തുക (Due Amount)
-  * `{{4}}` : അവസാന തീയതി (Due Date)
-  * `{{5}}` : Razorpay ഓൺലൈൻ പേയ്‌മെന്റ് ലിങ്ക് (Payment Link)
-* **മലയാളം സന്ദേശ രൂപം (Message Format)**:
+* **Purpose**: One-time password sent when a facility administrator signs in or registers via phone number.
+* **Meta Category**: `AUTHENTICATION`
+* **Variables**:
+  * `{{1}}` : 6-digit OTP Code
+  * `{{2}}` : Validity duration in minutes (e.g., 5)
+* **Message Format**:
 
-> നമസ്കാരം **{{1}}**,  
+> Your RentTrack verification code is **{{1}}**.  
+> This code is valid for **{{2}}** minutes. For security reasons, do not share this OTP with anyone.  
 > 
-> **{{2}}** മാസത്തെ നിങ്ങളുടെ വാടക/ഫീസ് തുകയായ **₹{{3}}** അടയ്ക്കാനുള്ള അവസാന തീയതി **{{4}}** ആണ്.  
+> — RentTrack Secure Login
+
+---
+
+### 💰 2. Rent / Fee Due Reminder (with Razorpay UPI Link)
+
+* **Purpose**: Sent before or on the due date to remind members or tenants of upcoming/overdue rent with an embedded payment link.
+* **Meta Category**: `UTILITY`
+* **Variables**:
+  * `{{1}}` : Member / Tenant Name
+  * `{{2}}` : Billing Month (e.g., October 2026)
+  * `{{3}}` : Amount Due (e.g., 1,500)
+  * `{{4}}` : Payment Due Date (e.g., 05 Oct 2026)
+  * `{{5}}` : Razorpay Payment Link (e.g., `https://rzp.io/i/xxxxxx`)
+* **Message Format**:
+
+> Hello **{{1}}**,  
 > 
-> താഴെ നൽകിയിരിക്കുന്ന ലിങ്ക് വഴി Google Pay, PhonePe, Paytm അല്ലെങ്കിൽ കാർഡ് ഉപയോഗിച്ച് സുരക്ഷിതമായി പണമടയ്ക്കാം:  
+> This is a friendly reminder that your fee/rent of **₹{{3}}** for **{{2}}** is due on **{{4}}**.  
+> 
+> You can make a fast and secure payment using Google Pay, PhonePe, Paytm, or Cards via the link below:  
 > 👉 **{{5}}**  
 > 
-> പണമടച്ച ഉടൻ ഔദ്യോഗിക രസീത് തനിയെ ലഭ്യമാകുന്നതാണ്. നന്ദി!
+> Your official receipt will be generated automatically upon payment. Thank you!
 
 ---
 
-### 📄 ③ Payment Confirmation & Digital Receipt (പണമടച്ച രസീത് സന്ദേശം)
+### 📄 3. Payment Confirmation & Digital Receipt
 
-* **ഉദ്ദേശ്യം**: കസ്റ്റമർ ഓൺലൈനായോ ക്യാഷായോ പണമടച്ചു കഴിയുമ്പോൾ ഉടൻ അയക്കുന്ന ഡിജിറ്റൽ രസീത്.
-* **Meta കാറ്റഗറി**: `UTILITY`
-* **വേരിയബിളുകൾ (Variables)**:
-  * `{{1}}` : മെമ്പറുടെ പേര് (Member Name)
-  * `{{2}}` : മാസം (Billing Month)
-  * `{{3}}` : അടച്ച തുക (Paid Amount)
-  * `{{4}}` : പണമടച്ച രീതി (Payment Mode - UPI, Card, Cash)
-  * `{{5}}` : രസീത് ഡൗൺലോഡ് ചെയ്യാനുള്ള ലിങ്ക് (Receipt Download Link)
-* **മലയാളം സന്ദേശ രൂപം (Message Format)**:
+* **Purpose**: Sent immediately after a payment is received (online through Razorpay or recorded manually in cash).
+* **Meta Category**: `UTILITY`
+* **Variables**:
+  * `{{1}}` : Member / Tenant Name
+  * `{{2}}` : Billing Month
+  * `{{3}}` : Amount Paid
+  * `{{4}}` : Payment Method (e.g., UPI, Card, Cash)
+  * `{{5}}` : Digital Receipt Download Link
+* **Message Format**:
 
-> പ്രിയ **{{1}}**,  
+> Dear **{{1}}**,  
 > 
-> **{{2}}** മാസത്തെ **₹{{3}}** പേയ്‌മെന്റ് (**{{4}}** വഴി) വിജയകരമായി ലഭിച്ചിരിക്കുന്നു.  
+> We have successfully received your payment of **₹{{3}}** for **{{2}}** via **{{4}}**.  
 > 
-> 📄 നിങ്ങളുടെ ഔദ്യോഗിക ഡിജിറ്റൽ രസീത് കാണാനും ഡൗൺലോഡ് ചെയ്യാനും ഇവിടെ ക്ലിക്ക് ചെയ്യുക:  
+> 📄 Click the link below to view and download your official digital receipt:  
 > 👉 **{{5}}**  
 > 
-> RentTrack വഴി സേവനം ഉപയോഗിച്ചതിന് നന്ദി!
+> Thank you for choosing RentTrack!
 
 ---
 
-### 👋 ④ Member Welcome Message (പുതിയ മെമ്പറെ ചേർക്കുമ്പോൾ)
+### 👋 4. Member / Tenant Welcome Message
 
-* **ഉദ്ദേശ്യം**: ആപ്പിൽ പുതിയൊരു മെമ്പറെ ചേർത്തു കഴിയുമ്പോൾ അയക്കുന്ന സ്വാഗത സന്ദേശം.
-* **Meta കാറ്റഗറി**: `MARKETING` / `UTILITY`
-* **വേരിയബിളുകൾ (Variables)**:
-  * `{{1}}` : മെമ്പറുടെ പേര് (Member Name)
-  * `{{2}}` : സ്ഥാപനത്തിന്റെ പേര് (Facility / Business Name)
-  * `{{3}}` : പ്ലാനിന്റെ പേര് (Plan Name)
-  * `{{4}}` : ചേർന്ന തീയതി (Joining Date)
-  * `{{5}}` : പ്രതിമാസ ഡ്യൂ തീയതി (Monthly Due Day)
-* **മലയാളം സന്ദേശ രൂപം (Message Format)**:
+* **Purpose**: Sent automatically when an administrator registers a new member or tenant in the facility.
+* **Meta Category**: `MARKETING` / `UTILITY`
+* **Variables**:
+  * `{{1}}` : Member Name
+  * `{{2}}` : Facility / Business Name
+  * `{{3}}` : Plan / Batch Name
+  * `{{4}}` : Joining Date
+  * `{{5}}` : Monthly Payment Due Day (e.g., 5th of every month)
+* **Message Format**:
 
-> ഹലോ **{{1}}**,  
+> Hello **{{1}}**,  
 > 
-> **{{2}}**-ലേക്ക് ഹൃദ്യമായ സ്വാഗതം!  
-> നിങ്ങളുടെ മെമ്പർഷിപ്പ് പ്ലാൻ (**{{3}}**) **{{4}}** മുതൽ സജീവമായി ആരംഭിച്ചിരിക്കുന്നു.  
-> എല്ലാ മാസവും **{{5}}**-ാം തീയതിയാണ് വാടക ഡ്യൂ വരുന്നത്.  
+> Welcome to **{{2}}**!  
+> Your membership plan (**{{3}}**) is active starting from **{{4}}**.  
+> Your monthly payment due date is the **{{5}}** of each month.  
 > 
-> എന്തെങ്കിലും സംശയങ്ങളുണ്ടെങ്കിൽ ഞങ്ങളുമായി ബന്ധപ്പെടാവുന്നതാണ്. നന്ദി!
+> Feel free to reach out if you have any questions. We are glad to have you with us!
 
 ---
 
-### ⏰ ⑤ Membership Renewal Reminder (പ്ലാൻ കാലാവധി തീരുമ്പോൾ)
+### ⏰ 5. Membership Renewal Reminder
 
-* **ഉദ്ദേശ്യം**: 30 ദിവസമോ നിശ്ചിത കാലാവധിയോ ഉള്ള പ്ലാൻ അവസാനിക്കുന്നതിന് 3 ദിവസം മുൻപ് ഓർമ്മിപ്പിക്കാൻ.
-* **Meta കാറ്റഗറി**: `UTILITY`
-* **വേരിയബിളുകൾ (Variables)**:
-  * `{{1}}` : മെമ്പറുടെ പേര് (Member Name)
-  * `{{2}}` : സ്ഥാപനത്തിന്റെ പേര് (Facility Name)
-  * `{{3}}` : പ്ലാനിന്റെ പേര് (Plan Name)
-  * `{{4}}` : കാലാവധി അവസാനിക്കുന്ന തീയതി (Expiry Date)
-  * `{{5}}` : റിന്യൂവൽ ലിങ്ക് (Renewal Link)
-* **മലയാളം സന്ദേശ രൂപം (Message Format)**:
+* **Purpose**: Sent 3 to 5 days before a term plan expires (e.g., 30-day, 3-month, or annual plan).
+* **Meta Category**: `UTILITY`
+* **Variables**:
+  * `{{1}}` : Member Name
+  * `{{2}}` : Facility Name
+  * `{{3}}` : Plan Name
+  * `{{4}}` : Expiry Date
+  * `{{5}}` : Renewal Payment Link
+* **Message Format**:
 
-> പ്രിയ **{{1}}**,  
+> Dear **{{1}}**,  
 > 
-> **{{2}}**-ലെ നിങ്ങളുടെ **{{3}}** മെമ്പർഷിപ്പ് കാലാവധി **{{4}}**-ൽ അവസാനിക്കുകയാണ്.  
+> Your **{{3}}** membership at **{{2}}** will expire on **{{4}}**.  
 > 
-> തടസ്സമില്ലാതെ സേവനം തുടരുന്നതിനായി താഴെ കാണുന്ന ലിങ്ക് വഴി പ്ലാൻ റിന്യൂ ചെയ്യാവുന്നതാണ്:  
+> To continue without interruption, please renew your plan using the link below:  
 > 👉 **{{5}}**  
 > 
-> നന്ദി!
+> Thank you!
 
 ---
 
-### ❄️ ⑥ Month Freeze Confirmation (മാസം ഫ്രീസ് ചെയ്ത അറിയിപ്പ്)
+### ❄️ 6. Month Freeze Confirmation
 
-* **ഉദ്ദേശ്യം**: മെമ്പറുടെ ആവശ്യപ്രകാരം ഒരു മാസത്തെ വാടക ഫ്രീസ് ചെയ്യുമ്പോൾ അയക്കുന്ന സ്ഥിരീകരണ സന്ദേശം.
-* **Meta കാറ്റഗറി**: `UTILITY`
-* **വേരിയബിളുകൾ (Variables)**:
-  * `{{1}}` : മെമ്പറുടെ പേര് (Member Name)
-  * `{{2}}` : മാസം (Frozen Month)
-  * `{{3}}` : കാരണം / കുറിപ്പ് (Reason / Notes)
-* **മലയാളം സന്ദേശ രൂപം (Message Format)**:
+* **Purpose**: Sent when a member requests a temporary hold / freeze for a month due to vacation, injury, or travel.
+* **Meta Category**: `UTILITY`
+* **Variables**:
+  * `{{1}}` : Member Name
+  * `{{2}}` : Frozen Month
+  * `{{3}}` : Reason / Admin Notes
+* **Message Format**:
 
-> പ്രിയ **{{1}}**,  
+> Dear **{{1}}**,  
 > 
-> നിങ്ങളുടെ അഭ്യർത്ഥനപ്രകാരം **{{2}}** മാസത്തെ ബില്ലിംഗ് താല്കാലികമായി ഫ്രീസ് (Freeze ❄️) ചെയ്തിരിക്കുന്നു.  
-> കുറിപ്പ്: **{{3}}**  
+> As requested, your membership billing for **{{2}}** has been put on freeze (Freeze ❄️).  
+> Note: **{{3}}**  
 > 
-> ഈ മാസത്തെ വാടക കുടിശ്ശികയായി കണക്കാക്കില്ല. തുടർന്ന് സേവനത്തിലേക്ക് തിരികെ എത്തുമ്പോൾ ദയവായി അറിയിക്കുക. നന്ദി!
+> This month's dues are waived and will not be counted as pending. Please let us know when you are ready to resume. Thank you!
