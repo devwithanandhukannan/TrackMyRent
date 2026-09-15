@@ -46,15 +46,6 @@ class ApiService {
   }
 
 
-  static Future<Map<String, dynamic>> customerLogin(String phone) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/customer-login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone}),
-    );
-    return jsonDecode(response.body);
-  }
-
   static Future<Map<String, dynamic>> sendOtp(String phone) async {
     try {
       final response = await http.post(
