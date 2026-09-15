@@ -150,15 +150,20 @@ class ApiService {
   }
 
   static Future<bool> createPlan(Map<String, dynamic> planData) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/plans'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'organizationId': demoOrgId,
-        ...planData,
-      }),
-    );
-    return response.statusCode == 200 || response.statusCode == 201;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/plans'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'organizationId': demoOrgId,
+          ...planData,
+        }),
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print('ApiService.createPlan Error: $e');
+      return false;
+    }
   }
 
   static Future<bool> createGroup(String planId, String name, {String? schedule, int? capacity}) async {

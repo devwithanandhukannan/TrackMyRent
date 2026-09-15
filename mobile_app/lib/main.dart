@@ -896,6 +896,10 @@ class _PlansScreenViewState extends State<PlansScreenView> {
                     const SnackBar(content: Text('Plan created successfully!'), backgroundColor: Color(0xFF059669)),
                   );
                   _loadPlans();
+                } else if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to create plan. Please check backend connection.'), backgroundColor: Colors.redAccent),
+                  );
                 }
               },
               child: const Text('Create Plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

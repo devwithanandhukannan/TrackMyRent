@@ -3,24 +3,62 @@ import { prisma } from '../index';
 
 export const createPlan = async (req: Request, res: Response) => {
   try {
-    const { organizationId, name, price, durationDays = 30, durationType = 'DAYS_30', frequencyMonths = 1, collectionDayType = 'FIRST_DAY_OF_MONTH', customDayNumber, description } = req.body;
+    const {
+      organizationId,
+      name,
+      price,
+      durationDays = 30,
+      durationType = 'DAYS_30',
+      frequencyMonths = 1,
+      collectionDayType = 'FIRST_DAY_OF_MONTH',
+      customDayNumber,
+      description,
+    } = req.body;
+
+    if (!name || price === undefined) {
+      return res.status(400).json({ error: 'Plan name and price are required' });
+    }
+
+    let targetOrgId = organizationId;
+    if (targetOrgId) {
+      const existingOrg = await prisma.organization.findUnique({ where: { id: targetOrgId } });
+      if (!existingOrg) {
+        const firstOrg = await prisma.organization.findFirst();
+        if (firstOrg) targetOrgId = firstOrg.id;
+      }
+    } else {
+      const firstOrg = await prisma.organization.findFirst();
+      if (firstOrg) targetOrgId = firstOrg.id;
+    }
+
+    if (!targetOrgId) {
+      // Create a default organization if none exists
+      const newOrg = await prisma.organization.create({
+        data: {
+          name: 'RentTrack Facility',
+          type: 'GYM',
+        },
+      });
+      targetOrgId = newOrg.id;
+    }
 
     const plan = await prisma.plan.create({
       data: {
-        organizationId,
+        organizationId: targetOrgId,
         name,
-        price,
-        durationDays,
+        price: Number(price),
+        durationDays: Number(durationDays),
         durationType,
-        frequencyMonths,
+        frequencyMonths: Number(frequencyMonths),
         collectionDayType,
-        customDayNumber,
-        description,
+        customDayNumber: customDayNumber ? Number(customDayNumber) : null,
+        description: description || null,
       },
     });
 
     res.status(201).json({ message: 'Plan created successfully', plan });
   } catch (error) {
+    console.error('Error creating plan:', error);
     res.status(500).json({ error: (error as Error).message });
   }
 };
@@ -38,7 +76,7 @@ export const createGroup = async (req: Request, res: Response) => {
         planId,
         name,
         schedule,
-        capacity,
+        capacity: capacity ? Number(capacity) : null,
       },
     });
 
@@ -52,8 +90,16 @@ export const listPlans = async (req: Request, res: Response) => {
   try {
     const { organizationId } = req.query;
 
+    let targetOrgId = organizationId ? String(organizationId) : undefined;
+    if (targetOrgId) {
+      const existingOrg = await prisma.organization.findUnique({ where: { id: targetOrgId } });
+      if (!existingOrg) {
+        targetOrgId = undefined; // Return all plans if specific org ID not matched
+      }
+    }
+
     const plans = await prisma.plan.findMany({
-      where: organizationId ? { organizationId: String(organizationId) } : {},
+      where: targetOrgId ? { organizationId: targetOrgId } : {},
       include: {
         groups: true,
         members: {
@@ -62,6 +108,7 @@ export const listPlans = async (req: Request, res: Response) => {
           },
         },
       },
+      orderBy: { createdAt: 'desc' },
     });
 
     const formattedPlans = plans.map((p) => {
@@ -98,6 +145,7 @@ export const listPlans = async (req: Request, res: Response) => {
         paidMembersCount,
         pendingMembersCount,
         frozenMembersCount,
+        groups: p.groups,
       };
     });
 
