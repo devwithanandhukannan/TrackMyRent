@@ -235,7 +235,7 @@ export const sendOtp = async (req: Request, res: Response) => {
 
     res.status(200).json({
       message: 'OTP sent successfully',
-      otp: '123456',
+      otp: '00000',
       isNewUser: !hasValidDetails,
       existingUser: existingUser
         ? {
@@ -262,8 +262,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Phone number and OTP are required' });
     }
 
-    if (otp !== '123456') {
-      return res.status(400).json({ error: 'Invalid OTP. Use demo OTP: 123456' });
+    const trimmedOtp = String(otp).trim();
+    if (trimmedOtp !== '00000' && trimmedOtp !== '123456' && trimmedOtp !== '000000' && trimmedOtp !== '0000') {
+      return res.status(400).json({ error: 'Invalid OTP. Use demo OTP: 00000' });
     }
 
     const cleanedPhone = String(phone).replace(/[^0-9]/g, '');
@@ -274,27 +275,22 @@ export const verifyOtp = async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      if (!orgName || !adminName) {
-        return res.status(400).json({
-          error: 'Registration details (orgName, adminName) required for first-time login',
-          isNewUser: true,
-        });
-      }
-
+      const finalOrgName = orgName && String(orgName).trim() ? String(orgName).trim() : 'RentTrack Facility';
+      const finalAdminName = adminName && String(adminName).trim() ? String(adminName).trim() : 'Admin';
       const generatedEmail = email && String(email).trim()
         ? String(email).trim().toLowerCase()
-        : `admin_${cleanedPhone}_${Date.now()}@renttrack.app`;
+        : `admin_${cleanedPhone || Date.now()}@renttrack.app`;
 
       const validOrgType = orgType ? String(orgType).toUpperCase() : 'GYM';
       const passwordHash = await bcrypt.hash('otp_authenticated', 10);
 
       const org = await prisma.organization.create({
         data: {
-          name: orgName,
+          name: finalOrgName,
           type: validOrgType as any,
           users: {
             create: {
-              name: adminName,
+              name: finalAdminName,
               email: generatedEmail,
               phone: cleanedPhone,
               passwordHash,

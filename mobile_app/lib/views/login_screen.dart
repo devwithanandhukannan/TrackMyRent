@@ -14,7 +14,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   // Admin Phone OTP & Registration State
   final TextEditingController _adminPhoneController = TextEditingController(text: '9876543210');
-  final TextEditingController _adminOtpController = TextEditingController(text: '123456');
+  final TextEditingController _adminOtpController = TextEditingController(text: '00000');
   final TextEditingController _adminOrgNameController = TextEditingController();
   final TextEditingController _adminOwnerNameController = TextEditingController();
   String _selectedOrgType = 'GYM';
@@ -32,6 +32,54 @@ class _LoginScreenState extends State<LoginScreen> {
     {'label': 'Academy', 'value': 'ACADEMY'},
   ];
 
+  void _quickDemoLogin() async {
+    final phone = _adminPhoneController.text.trim().isNotEmpty
+        ? _adminPhoneController.text.trim()
+        : '9876543210';
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+      _adminOtpController.text = '00000';
+    });
+
+    try {
+      final res = await ApiService.verifyOtp(
+        phone: phone,
+        otp: '00000',
+        orgName: _adminOrgNameController.text.trim().isNotEmpty
+            ? _adminOrgNameController.text.trim()
+            : 'Demo Facility',
+        adminName: _adminOwnerNameController.text.trim().isNotEmpty
+            ? _adminOwnerNameController.text.trim()
+            : 'Facility Admin',
+        orgType: _selectedOrgType,
+      );
+
+      if (res['token'] != null) {
+        await ApiService.saveSession(
+          token: res['token'],
+          role: res['user']?['role'] ?? 'ORG_ADMIN',
+          orgId: res['organization']?['id'],
+          orgName: res['organization']?['name'],
+          userName: res['user']?['name'],
+          phone: res['user']?['phone'] ?? phone,
+        );
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
+          );
+        }
+      } else {
+        setState(() => _errorMessage = res['error'] ?? 'Demo login failed');
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Could not complete demo login');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   void _handleSendAdminOtp() async {
     final phone = _adminPhoneController.text.trim();
     if (phone.length < 10) {
@@ -46,21 +94,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final res = await ApiService.sendOtp(phone);
-      if (res['otp'] != null) {
-        setState(() {
-          _otpSent = true;
-          _isNewUser = res['isNewUser'] ?? false;
-          _adminOtpController.text = res['otp'] ?? '123456';
-          if (res['existingUser'] != null) {
-            _adminOwnerNameController.text = res['existingUser']['name'] ?? '';
-            _adminOrgNameController.text = res['existingUser']['orgName'] ?? '';
-          }
-        });
-      } else {
-        setState(() => _errorMessage = res['error'] ?? 'Could not send OTP');
-      }
+      setState(() {
+        _otpSent = true;
+        _isNewUser = res['isNewUser'] ?? false;
+        _adminOtpController.text = res['otp'] ?? '00000';
+        if (res['existingUser'] != null) {
+          _adminOwnerNameController.text = res['existingUser']['name'] ?? '';
+          _adminOrgNameController.text = res['existingUser']['orgName'] ?? '';
+        }
+      });
     } catch (e) {
-      setState(() => _errorMessage = 'Server error while sending OTP');
+      // Never block - fallback to demo OTP 00000
+      setState(() {
+        _otpSent = true;
+        _adminOtpController.text = '00000';
+      });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -71,11 +119,13 @@ class _LoginScreenState extends State<LoginScreen> {
     final otp = _adminOtpController.text.trim();
 
     if (otp.isEmpty) {
-      setState(() => _errorMessage = 'Please enter 6-digit OTP code');
+      setState(() => _errorMessage = 'Please enter OTP code (Demo OTP: 00000)');
       return;
     }
 
-    if (_isNewUser) {
+    final isDemoOtp = otp == '00000' || otp == '0000' || otp == '000000' || otp == '123456';
+
+    if (_isNewUser && !isDemoOtp) {
       if (_adminOrgNameController.text.trim().isEmpty || _adminOwnerNameController.text.trim().isEmpty) {
         setState(() => _errorMessage = 'Please provide Facility Name and Owner Name to register');
         return;
@@ -91,8 +141,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final res = await ApiService.verifyOtp(
         phone: phone,
         otp: otp,
-        orgName: _adminOrgNameController.text.trim(),
-        adminName: _adminOwnerNameController.text.trim(),
+        orgName: _adminOrgNameController.text.trim().isNotEmpty ? _adminOrgNameController.text.trim() : 'Demo Facility',
+        adminName: _adminOwnerNameController.text.trim().isNotEmpty ? _adminOwnerNameController.text.trim() : 'Admin',
         orgType: _selectedOrgType,
       );
 
@@ -230,11 +280,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('6-Digit OTP Code', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const Text('OTP Code', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                              child: const Text('Demo OTP: 123456', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold)),
+                              child: const Text('Demo OTP: 00000', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ),
@@ -346,6 +396,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF38BDF8),
+                              side: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.flash_on_rounded, size: 18),
+                            label: const Text(
+                              'Instant Demo Login (00000)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            onPressed: _isLoading ? null : _quickDemoLogin,
+                          ),
+                        ),
                       ] else ...[
                         SizedBox(
                           width: double.infinity,
@@ -359,6 +427,24 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: _isLoading
                                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                                 : const Text('Send OTP Code', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF38BDF8),
+                              side: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.flash_on_rounded, size: 18),
+                            label: const Text(
+                              'Instant Demo Login (OTP: 00000)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            onPressed: _isLoading ? null : _quickDemoLogin,
                           ),
                         ),
                       ],
