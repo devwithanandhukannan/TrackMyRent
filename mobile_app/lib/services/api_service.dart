@@ -1,9 +1,50 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String baseUrl = 'http://localhost:5001/api';
   static const String demoOrgId = 'f1aac5fa-5087-41fd-9c13-e9f4b20eae81';
+
+  static Future<void> saveSession({
+    required String token,
+    required String role,
+    String? orgId,
+    String? orgName,
+    String? userName,
+    String? phone,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('renttrack_token', token);
+    await prefs.setString('renttrack_role', role);
+    if (orgId != null) await prefs.setString('renttrack_org_id', orgId);
+    if (orgName != null) await prefs.setString('renttrack_org_name', orgName);
+    if (userName != null) await prefs.setString('renttrack_user_name', userName);
+    if (phone != null) await prefs.setString('renttrack_phone', phone);
+  }
+
+  static Future<void> clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  }
+
+  static Future<bool> isLoggedIn() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey('renttrack_token');
+  }
+
+  static Future<Map<String, String?>> getSessionData() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'token': prefs.getString('renttrack_token'),
+      'role': prefs.getString('renttrack_role'),
+      'orgId': prefs.getString('renttrack_org_id'),
+      'orgName': prefs.getString('renttrack_org_name'),
+      'userName': prefs.getString('renttrack_user_name'),
+      'phone': prefs.getString('renttrack_phone'),
+    };
+  }
+
 
   static Future<Map<String, dynamic>> customerLogin(String phone) async {
     final response = await http.post(

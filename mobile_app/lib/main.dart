@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
-import 'views/onboarding_screen.dart';
 import 'views/add_member_screen.dart';
 import 'views/app_plan_selection_screen.dart';
 import 'views/member_detail_screen.dart';
 import 'views/settings_screen.dart';
+import 'views/login_screen.dart';
 import 'services/api_service.dart';
 
-void main() {
-  runApp(const RentTrackApp());
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final isLoggedIn = await ApiService.isLoggedIn();
+  runApp(RentTrackApp(isLoggedIn: isLoggedIn));
 }
 
 class RentTrackApp extends StatelessWidget {
-  const RentTrackApp({super.key});
+  final bool isLoggedIn;
+  const RentTrackApp({super.key, this.isLoggedIn = false});
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +30,7 @@ class RentTrackApp extends StatelessWidget {
           surface: Colors.white,
         ),
       ),
-      home: const OnboardingScreen(),
+      home: isLoggedIn ? const MainNavigationScreen() : const LoginScreen(),
     );
   }
 }
@@ -34,6 +38,50 @@ class RentTrackApp extends StatelessWidget {
 // Reusable Top Header bar present across Dashboard, Plan, Expense, Report
 class RentTrackHeader extends StatelessWidget {
   const RentTrackHeader({super.key});
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.logout_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Logout?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to log out of your session on RentTrack?',
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ApiService.clearSession();
+              if (context.mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (c) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
+            },
+            child: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +166,23 @@ class RentTrackHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => _showLogoutDialog(context),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.logout_rounded,
+                    color: Colors.redAccent,
+                    size: 20,
+                  ),
+                ),
+              ),
             ],
           ),
         ],
@@ -125,6 +190,7 @@ class RentTrackHeader extends StatelessWidget {
     );
   }
 }
+
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});

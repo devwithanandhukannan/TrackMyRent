@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../utils/colors.dart';
+import 'login_screen.dart';
 
 class CustomerPortalView extends StatefulWidget {
   final Map<String, dynamic> customerData;
@@ -13,6 +14,16 @@ class CustomerPortalView extends StatefulWidget {
 
 class _CustomerPortalViewState extends State<CustomerPortalView> {
   bool _isProcessingPayment = false;
+
+  void _handleLogout() async {
+    await ApiService.clearSession();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (ctx) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,11 +42,13 @@ class _CustomerPortalViewState extends State<CustomerPortalView> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            tooltip: 'Logout',
+            onPressed: _handleLogout,
           ),
         ],
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(

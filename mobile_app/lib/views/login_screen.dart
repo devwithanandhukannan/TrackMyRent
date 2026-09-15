@@ -51,8 +51,15 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final res = await ApiService.customerLogin(phone);
       if (res['token'] != null) {
+        await ApiService.saveSession(
+          token: res['token'],
+          role: 'CUSTOMER',
+          orgName: res['member']?['organizationName'],
+          userName: res['member']?['fullName'],
+          phone: res['member']?['phone'],
+        );
         if (mounted) {
-          Navigator.of(context).push(
+          Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (ctx) => CustomerPortalView(customerData: res)),
           );
         }
@@ -131,6 +138,14 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (res['token'] != null) {
+        await ApiService.saveSession(
+          token: res['token'],
+          role: res['user']?['role'] ?? 'ORG_ADMIN',
+          orgId: res['organization']?['id'],
+          orgName: res['organization']?['name'],
+          userName: res['user']?['name'],
+          phone: res['user']?['phone'],
+        );
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
@@ -145,6 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

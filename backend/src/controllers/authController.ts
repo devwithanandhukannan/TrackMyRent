@@ -229,16 +229,20 @@ export const sendOtp = async (req: Request, res: Response) => {
       include: { organization: true },
     });
 
+    const hasValidDetails = existingUser &&
+      existingUser.name && existingUser.name.trim() !== '' &&
+      existingUser.organization && existingUser.organization.name && existingUser.organization.name.trim() !== '';
+
     res.status(200).json({
       message: 'OTP sent successfully',
       otp: '123456',
-      isNewUser: !existingUser,
+      isNewUser: !hasValidDetails,
       existingUser: existingUser
         ? {
             name: existingUser.name,
             email: existingUser.email,
             phone: existingUser.phone,
-            orgName: existingUser.organization.name,
+            orgName: existingUser.organization?.name,
           }
         : null,
     });
@@ -248,7 +252,7 @@ export const sendOtp = async (req: Request, res: Response) => {
 };
 
 /**
- * Verify OTP & Register Facility Admin on First-Time Login
+ * Verify OTP & Register / Complete Facility Admin Registration
  */
 export const verifyOtp = async (req: Request, res: Response) => {
   try {
@@ -313,10 +317,35 @@ export const verifyOtp = async (req: Request, res: Response) => {
         where: { id: org.users[0].id },
         include: { organization: true },
       });
+    } else {
+      // If user exists and new orgName/adminName are supplied, update details
+      if (adminName || orgName) {
+        if (adminName && adminName.trim()) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { name: adminName.trim() },
+          });
+        }
+
+        if (orgName && orgName.trim()) {
+          await prisma.organization.update({
+            where: { id: user.organizationId },
+            data: {
+              name: orgName.trim(),
+              type: orgType ? (String(orgType).toUpperCase() as any) : user.organization.type,
+            },
+          });
+        }
+
+        user = await prisma.user.findUnique({
+          where: { id: user.id },
+          include: { organization: true },
+        });
+      }
     }
 
     if (!user) {
-      return res.status(400).json({ error: 'User creation failed' });
+      return res.status(400).json({ error: 'User creation/update failed' });
     }
 
     const token = jwt.sign(
@@ -335,6 +364,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
     res.status(500).json({ error: (error as Error).message });
   }
 };
+
 
 /**
  * Fetch all registered facilities / organizations for Admin Panel
