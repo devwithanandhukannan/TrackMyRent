@@ -760,6 +760,152 @@ class _PlansScreenViewState extends State<PlansScreenView> {
     }
   }
 
+  void _openAddPlanDialog() {
+    final nameController = TextEditingController();
+    final priceController = TextEditingController();
+    final descriptionController = TextEditingController();
+    int durationDays = 30;
+    int frequencyMonths = 1;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.assignment_add, color: Color(0xFF059669)),
+              SizedBox(width: 8),
+              Text('Add New Plan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A))),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Plan Name *', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Standard Shop / Gym Monthly',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Price (₹) *', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                  decoration: InputDecoration(
+                    prefixText: '₹ ',
+                    hintText: 'e.g. 18500',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Duration (Days)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<int>(
+                  initialValue: durationDays,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 30, child: Text('30 Days')),
+                    DropdownMenuItem(value: 60, child: Text('60 Days')),
+                    DropdownMenuItem(value: 90, child: Text('90 Days')),
+                    DropdownMenuItem(value: 365, child: Text('1 Year (365 Days)')),
+                  ],
+                  onChanged: (val) => setDialogState(() => durationDays = val ?? 30),
+                ),
+                const SizedBox(height: 14),
+                const Text('Billing Frequency', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<int>(
+                  initialValue: frequencyMonths,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('Monthly (1 Month)')),
+                    DropdownMenuItem(value: 3, child: Text('Quarterly (3 Months)')),
+                    DropdownMenuItem(value: 6, child: Text('Half-Yearly (6 Months)')),
+                    DropdownMenuItem(value: 12, child: Text('Yearly (12 Months)')),
+                  ],
+                  onChanged: (val) => setDialogState(() => frequencyMonths = val ?? 1),
+                ),
+                const SizedBox(height: 14),
+                const Text('Description (Optional)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: descriptionController,
+                  maxLines: 2,
+                  style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Standard shop unit on ground floor',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                final name = nameController.text.trim();
+                final priceText = priceController.text.trim();
+                if (name.isEmpty || priceText.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter Plan name and Price')),
+                  );
+                  return;
+                }
+                final price = double.tryParse(priceText) ?? 0.0;
+                final success = await ApiService.createPlan({
+                  'name': name,
+                  'price': price,
+                  'durationDays': durationDays,
+                  'frequencyMonths': frequencyMonths,
+                  'description': descriptionController.text.trim(),
+                });
+                if (success && mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Plan created successfully!'), backgroundColor: Color(0xFF059669)),
+                  );
+                  _loadPlans();
+                }
+              },
+              child: const Text('Create Plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const primaryGreen = Color(0xFF059669);
@@ -780,8 +926,8 @@ class _PlansScreenViewState extends State<PlansScreenView> {
                   color: Color(0xFF0F172A),
                 ),
               ),
-              ElevatedButton(
-                onPressed: () {},
+              ElevatedButton.icon(
+                onPressed: _openAddPlanDialog,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryGreen,
                   elevation: 0,
@@ -790,7 +936,8 @@ class _PlansScreenViewState extends State<PlansScreenView> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                child: const Text(
+                icon: const Icon(Icons.add, size: 18, color: Colors.white),
+                label: const Text(
                   'Add new plan',
                   style: TextStyle(
                     fontSize: 13,
@@ -805,6 +952,42 @@ class _PlansScreenViewState extends State<PlansScreenView> {
 
           if (_isLoading)
             const Padding(padding: EdgeInsets.all(30), child: Center(child: CircularProgressIndicator(color: primaryGreen)))
+          else if (_plans.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.assignment_outlined, size: 48, color: Color(0xFF94A3B8)),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'No Plans Found',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Tap "Add new plan" above to create your first membership or rent plan.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                    label: const Text('Add new plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    onPressed: _openAddPlanDialog,
+                  ),
+                ],
+              ),
+            )
           else
             ..._plans.map((plan) {
               final name = plan['name'] ?? 'Plan';
@@ -836,7 +1019,7 @@ class _PlansScreenViewState extends State<PlansScreenView> {
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(
-                                Icons.add_rounded,
+                                Icons.assignment_outlined,
                                 size: 20,
                                 color: primaryGreen,
                               ),

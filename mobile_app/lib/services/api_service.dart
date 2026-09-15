@@ -161,6 +161,20 @@ class ApiService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
+  static Future<bool> createGroup(String planId, String name, {String? schedule, int? capacity}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/plans/groups'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'planId': planId,
+        'name': name,
+        'schedule': schedule,
+        'capacity': capacity,
+      }),
+    );
+    return response.statusCode == 200 || response.statusCode == 201;
+  }
+
   static Future<List<dynamic>> fetchExpenses() async {
     final response = await http.get(Uri.parse('$baseUrl/expenses?organizationId=$demoOrgId'));
     if (response.statusCode == 200) {
