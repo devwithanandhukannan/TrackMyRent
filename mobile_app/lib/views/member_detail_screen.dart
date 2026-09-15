@@ -259,8 +259,8 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
 
                   // Unpaid History Section
                   if (_unpaidSchedules.isNotEmpty) ...[
-                    Row(
-                      children: const [
+                    const Row(
+                      children: [
                         Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
                         SizedBox(width: 6),
                         Text(
@@ -276,8 +276,8 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
 
                   // Frozen History Section
                   if (_frozenSchedules.isNotEmpty) ...[
-                    Row(
-                      children: const [
+                    const Row(
+                      children: [
                         Icon(Icons.ac_unit_rounded, color: Color(0xFF0284C7), size: 20),
                         SizedBox(width: 6),
                         Text(
@@ -292,8 +292,8 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
                   ],
 
                   // Paid History Section
-                  Row(
-                    children: const [
+                  const Row(
+                    children: [
                       Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 20),
                       SizedBox(width: 6),
                       Text(

@@ -55,7 +55,9 @@ export const createMember = async (req: Request, res: Response) => {
     if (selectedPlan) {
       const cycleDate = new Date(member.joiningDate);
       let dueDate = new Date(cycleDate);
-      if (selectedPlan.collectionDayType === 'FIRST_DAY_OF_MONTH') {
+      if (req.body.dueDayNumber) {
+        dueDate = new Date(cycleDate.getFullYear(), cycleDate.getMonth(), Number(req.body.dueDayNumber));
+      } else if (selectedPlan.collectionDayType === 'FIRST_DAY_OF_MONTH') {
         dueDate = new Date(cycleDate.getFullYear(), cycleDate.getMonth(), 1);
       } else if (selectedPlan.collectionDayType === 'LAST_DAY_OF_MONTH') {
         dueDate = new Date(cycleDate.getFullYear(), cycleDate.getMonth() + 1, 0);
@@ -64,13 +66,14 @@ export const createMember = async (req: Request, res: Response) => {
       }
 
       const monthYear = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}`;
+      const scheduleAmount = req.body.monthlyRent ? Number(req.body.monthlyRent) : selectedPlan.price;
 
       await prisma.paymentSchedule.create({
         data: {
           memberId: member.id,
           monthYear,
           dueDate,
-          amount: selectedPlan.price,
+          amount: scheduleAmount,
           status: 'UNPAID',
         },
       });

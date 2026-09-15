@@ -4,7 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String baseUrl = 'http://localhost:5001/api';
-  static const String demoOrgId = 'f1aac5fa-5087-41fd-9c13-e9f4b20eae81';
+  static const String _fallbackOrgId = 'f1aac5fa-5087-41fd-9c13-e9f4b20eae81';
+
+  // ─── Session Management ─────────────────────────────────────────────────────
 
   static Future<void> saveSession({
     required String token,
@@ -45,6 +47,12 @@ class ApiService {
     };
   }
 
+  static Future<String> getOrgId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('renttrack_org_id') ?? _fallbackOrgId;
+  }
+
+  // ─── Auth ───────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> sendOtp(String phone) async {
     try {
@@ -99,26 +107,25 @@ class ApiService {
     }
   }
 
+  // ─── Reports ────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> fetchFinancialSummary() async {
-    final response = await http.get(Uri.parse('$baseUrl/reports/summary?organizationId=$demoOrgId'));
+    final orgId = await getOrgId();
+    final response = await http.get(Uri.parse('$baseUrl/reports/summary?organizationId=$orgId'));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
     throw Exception('Failed to load financial summary');
   }
 
+  // ─── Members ────────────────────────────────────────────────────────────────
+
   static Future<List<dynamic>> fetchMembers({String? status, String? month, String? year}) async {
-    String url = '$baseUrl/members?organizationId=$demoOrgId';
-    if (status != null) {
-      url += '&status=$status';
-    }
-    if (month != null) {
-      url += '&month=$month';
-    }
-    if (year != null) {
-      url += '&year=$year';
-    }
+    final orgId = await getOrgId();
+    String url = '$baseUrl/members?organizationId=$orgId';
+    if (status != null) url += '&status=$status';
+    if (month != null) url += '&month=$month';
+    if (year != null) url += '&year=$year';
     final response = await http.get(Uri.parse(url));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -129,21 +136,18 @@ class ApiService {
 
   static Future<Map<String, dynamic>> fetchMemberDetails(String id) async {
     final response = await http.get(Uri.parse('$baseUrl/members/$id'));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    }
+    if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Failed to load member details');
   }
 
   static Future<Map<String, dynamic>> fetchMemberSchedules(String memberId) async {
     final response = await http.get(Uri.parse('$baseUrl/payments/schedules/$memberId'));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    }
+    if (response.statusCode == 200) return jsonDecode(response.body);
     return {};
   }
 
-  static Future<bool> markAsPaid(String scheduleId, double amountPaid, {String paymentMethod = 'CASH', String? notes}) async {
+  static Future<bool> markAsPaid(String scheduleId, double amountPaid,
+      {String paymentMethod = 'CASH', String? notes}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/mark-paid'),
       headers: {'Content-Type': 'application/json'},
@@ -161,10 +165,7 @@ class ApiService {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/mark-unpaid'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'scheduleId': scheduleId,
-        'confirmed': confirmed,
-      }),
+      body: jsonEncode({'scheduleId': scheduleId, 'confirmed': confirmed}),
     );
     return jsonDecode(response.body);
   }
@@ -173,10 +174,7 @@ class ApiService {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/freeze'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'scheduleId': scheduleId,
-        'notes': notes ?? 'Month frozen by admin',
-      }),
+      body: jsonEncode({'scheduleId': scheduleId, 'notes': notes ?? 'Month frozen by admin'}),
     );
     return response.statusCode == 200;
   }
@@ -185,43 +183,27 @@ class ApiService {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/unfreeze'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'scheduleId': scheduleId,
-      }),
+      body: jsonEncode({'scheduleId': scheduleId}),
     );
     return response.statusCode == 200;
   }
 
-  static Future<Map<String, dynamic>> createRazorpayOrder(String scheduleId, String memberId, double amount) async {
+  static Future<Map<String, dynamic>> createRazorpayOrder(
+      String scheduleId, String memberId, double amount) async {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/razorpay/create-order'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'scheduleId': scheduleId,
-        'memberId': memberId,
-        'amount': amount,
-      }),
+      body: jsonEncode({'scheduleId': scheduleId, 'memberId': memberId, 'amount': amount}),
     );
     return jsonDecode(response.body);
   }
 
-  static Future<List<dynamic>> fetchPlans() async {
-    final response = await http.get(Uri.parse('$baseUrl/plans?organizationId=$demoOrgId'));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['plans'] ?? [];
-    }
-    return [];
-  }
-
   static Future<bool> createMember(Map<String, dynamic> memberData) async {
+    final orgId = await getOrgId();
     final response = await http.post(
       Uri.parse('$baseUrl/members'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'organizationId': demoOrgId,
-        ...memberData,
-      }),
+      body: jsonEncode({'organizationId': orgId, ...memberData}),
     );
     return response.statusCode == 200 || response.statusCode == 201;
   }
@@ -235,19 +217,40 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  // ─── Plans ──────────────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> fetchPlans() async {
+    final orgId = await getOrgId();
+    final response = await http.get(Uri.parse('$baseUrl/plans?organizationId=$orgId'));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['plans'] ?? [];
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> fetchPlanDetail(String planId) async {
+    final response = await http.get(Uri.parse('$baseUrl/plans/$planId'));
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('Failed to load plan detail');
+  }
+
+  static Future<Map<String, dynamic>> fetchGroupDetail(String groupId) async {
+    final response = await http.get(Uri.parse('$baseUrl/plans/groups/$groupId'));
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception('Failed to load group detail');
+  }
+
   static Future<bool> createPlan(Map<String, dynamic> planData) async {
     try {
+      final orgId = await getOrgId();
       final response = await http.post(
         Uri.parse('$baseUrl/plans'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'organizationId': demoOrgId,
-          ...planData,
-        }),
+        body: jsonEncode({'organizationId': orgId, ...planData}),
       );
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      print('ApiService.createPlan Error: $e');
       return false;
     }
   }
@@ -256,18 +259,60 @@ class ApiService {
     final response = await http.post(
       Uri.parse('$baseUrl/plans/groups'),
       headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'planId': planId, 'name': name, 'schedule': schedule, 'capacity': capacity}),
+    );
+    return response.statusCode == 200 || response.statusCode == 201;
+  }
+
+  static Future<bool> deletePlan(String planId) async {
+    final response = await http.delete(Uri.parse('$baseUrl/plans/$planId'));
+    return response.statusCode == 200;
+  }
+
+  // ─── Custom Fields ──────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> fetchCustomFields() async {
+    final orgId = await getOrgId();
+    final response =
+        await http.get(Uri.parse('$baseUrl/plans/custom-fields?organizationId=$orgId'));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['fields'] ?? [];
+    }
+    return [];
+  }
+
+  static Future<bool> createCustomField({
+    required String fieldName,
+    required String fieldType,
+    List<String> options = const [],
+    bool isRequired = false,
+  }) async {
+    final orgId = await getOrgId();
+    final response = await http.post(
+      Uri.parse('$baseUrl/members/custom-fields'),
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'planId': planId,
-        'name': name,
-        'schedule': schedule,
-        'capacity': capacity,
+        'organizationId': orgId,
+        'fieldName': fieldName,
+        'fieldType': fieldType,
+        'options': options,
+        'isRequired': isRequired,
       }),
     );
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
+  static Future<bool> deleteCustomField(String id) async {
+    final response = await http.delete(Uri.parse('$baseUrl/plans/custom-fields/$id'));
+    return response.statusCode == 200;
+  }
+
+  // ─── Expenses ───────────────────────────────────────────────────────────────
+
   static Future<List<dynamic>> fetchExpenses() async {
-    final response = await http.get(Uri.parse('$baseUrl/expenses?organizationId=$demoOrgId'));
+    final orgId = await getOrgId();
+    final response = await http.get(Uri.parse('$baseUrl/expenses?organizationId=$orgId'));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['expenses'] ?? [];
@@ -276,19 +321,24 @@ class ApiService {
   }
 
   static Future<bool> createExpense(Map<String, dynamic> expenseData) async {
+    final orgId = await getOrgId();
     final response = await http.post(
       Uri.parse('$baseUrl/expenses'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'organizationId': demoOrgId,
-        ...expenseData,
-      }),
+      body: jsonEncode({'organizationId': orgId, ...expenseData}),
     );
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
+  static Future<bool> deleteExpense(String id) async {
+    final response = await http.delete(Uri.parse('$baseUrl/expenses/$id'));
+    return response.statusCode == 200;
+  }
+
   static Future<List<dynamic>> fetchExpenseCategories() async {
-    final response = await http.get(Uri.parse('$baseUrl/expenses/categories?organizationId=$demoOrgId'));
+    final orgId = await getOrgId();
+    final response =
+        await http.get(Uri.parse('$baseUrl/expenses/categories?organizationId=$orgId'));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['categories'] ?? [];
@@ -297,13 +347,11 @@ class ApiService {
   }
 
   static Future<bool> createExpenseCategory(String name) async {
+    final orgId = await getOrgId();
     final response = await http.post(
       Uri.parse('$baseUrl/expenses/categories'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'organizationId': demoOrgId,
-        'name': name,
-      }),
+      body: jsonEncode({'organizationId': orgId, 'name': name}),
     );
     return response.statusCode == 200 || response.statusCode == 201;
   }
@@ -313,8 +361,12 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  // ─── WhatsApp Templates ─────────────────────────────────────────────────────
+
   static Future<List<dynamic>> fetchWhatsAppTemplates() async {
-    final response = await http.get(Uri.parse('$baseUrl/settings/whatsapp-templates?organizationId=$demoOrgId'));
+    final orgId = await getOrgId();
+    final response = await http
+        .get(Uri.parse('$baseUrl/settings/whatsapp-templates?organizationId=$orgId'));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['templates'] ?? [];

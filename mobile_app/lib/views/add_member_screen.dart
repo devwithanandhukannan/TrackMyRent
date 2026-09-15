@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class AddMemberScreen extends StatefulWidget {
-  const AddMemberScreen({super.key});
+  final String? initialPlanId;
+  final String? initialGroupId;
+
+  const AddMemberScreen({super.key, this.initialPlanId, this.initialGroupId});
 
   @override
   State<AddMemberScreen> createState() => _AddMemberScreenState();
@@ -18,11 +21,16 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
   bool _isLoading = false;
   List<dynamic> _plans = [];
   String? _selectedPlanId;
+  String? _selectedGroupId;
+  List<dynamic> _customFields = [];
+  final Map<String, TextEditingController> _customControllers = {};
 
   @override
   void initState() {
     super.initState();
-    _loadPlans();
+    _selectedPlanId = widget.initialPlanId;
+    _selectedGroupId = widget.initialGroupId;
+    _loadPlansAndFields();
   }
 
   @override
@@ -32,18 +40,39 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
     _batchController.dispose();
     _monthlyRentController.dispose();
     _dueDayController.dispose();
+    for (var c in _customControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _loadPlans() async {
+  Future<void> _loadPlansAndFields() async {
     try {
-      final fetched = await ApiService.fetchPlans();
+      final fetchedPlans = await ApiService.fetchPlans();
+      final fetchedFields = await ApiService.fetchCustomFields();
       if (mounted) {
         setState(() {
-          _plans = fetched;
-          if (fetched.isNotEmpty) {
-            _selectedPlanId = fetched.first['id'];
-            _monthlyRentController.text = '${fetched.first['price']?.toInt() ?? 0}';
+          _plans = fetchedPlans;
+          _customFields = fetchedFields;
+          for (var f in fetchedFields) {
+            final fName = f['fieldName']?.toString() ?? '';
+            if (fName.isNotEmpty && !_customControllers.containsKey(fName)) {
+              _customControllers[fName] = TextEditingController();
+            }
+          }
+
+          if (widget.initialPlanId != null) {
+            _selectedPlanId = widget.initialPlanId;
+            final match = fetchedPlans.firstWhere(
+              (p) => p['id']?.toString() == widget.initialPlanId,
+              orElse: () => null,
+            );
+            if (match != null) {
+              _monthlyRentController.text = '${match['price']?.toInt() ?? 0}';
+            }
+          } else if (fetchedPlans.isNotEmpty && _selectedPlanId == null) {
+            _selectedPlanId = fetchedPlans.first['id'];
+            _monthlyRentController.text = '${fetchedPlans.first['price']?.toInt() ?? 0}';
           }
         });
       }
@@ -55,7 +84,11 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
   void _onPlanSelected(Map<String, dynamic> plan) {
     setState(() {
       _selectedPlanId = plan['id'];
+      _selectedGroupId = null; // reset group if plan changes
       _monthlyRentController.text = '${plan['price']?.toInt() ?? 0}';
+      if (plan['customDayNumber'] != null) {
+        _dueDayController.text = '${plan['customDayNumber']}';
+      }
     });
   }
 
@@ -70,14 +103,37 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       return;
     }
 
+    // Validate and collect custom fields
+    final Map<String, dynamic> customData = {};
+    for (var f in _customFields) {
+      final fName = f['fieldName']?.toString() ?? '';
+      final val = _customControllers[fName]?.text.trim() ?? '';
+      if (f['isRequired'] == true && val.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$fName is required')),
+        );
+        return;
+      }
+      if (val.isNotEmpty) {
+        customData[fName] = val;
+      }
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      final monthlyRent = double.tryParse(_monthlyRentController.text.trim());
+      final dueDay = int.tryParse(_dueDayController.text.trim());
+
       final success = await ApiService.createMember({
         'fullName': name,
         'phone': phone,
         'planId': _selectedPlanId,
+        'groupId': _selectedGroupId,
         'duration': '30 Days',
+        if (monthlyRent != null) 'monthlyRent': monthlyRent,
+        if (dueDay != null) 'dueDayNumber': dueDay,
+        if (customData.isNotEmpty) 'customFieldsData': customData,
       });
 
       if (mounted) {
@@ -347,34 +403,66 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                       );
                     }),
 
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Batch',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _batchController,
-                      style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: InputDecoration(
-                        hintText: 'Morning / Evening',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGreen, width: 1.5),
-                        ),
-                      ),
+                    // Group / Batch Selector if groups exist for this plan
+                    Builder(
+                      builder: (context) {
+                        final selectedPlan = _plans.firstWhere(
+                          (p) => p['id']?.toString() == _selectedPlanId,
+                          orElse: () => null,
+                        );
+                        final groups = (selectedPlan != null && selectedPlan['groups'] is List)
+                            ? (selectedPlan['groups'] as List)
+                            : [];
+
+                        if (groups.isEmpty) return const SizedBox.shrink();
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 14),
+                            const Text(
+                              'Group / Batch',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF334155),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                ChoiceChip(
+                                  label: const Text('Direct (No Group)'),
+                                  selected: _selectedGroupId == null,
+                                  onSelected: (_) => setState(() => _selectedGroupId = null),
+                                  selectedColor: const Color(0xFFE6F4EE),
+                                  labelStyle: TextStyle(
+                                    color: _selectedGroupId == null ? primaryGreen : const Color(0xFF475569),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                ...groups.map((g) {
+                                  final gId = g['id']?.toString();
+                                  final gName = g['name']?.toString() ?? 'Group';
+                                  final isSel = _selectedGroupId == gId;
+                                  return ChoiceChip(
+                                    label: Text(gName),
+                                    selected: isSel,
+                                    onSelected: (_) => setState(() => _selectedGroupId = gId),
+                                    selectedColor: const Color(0xFFE6F4EE),
+                                    labelStyle: TextStyle(
+                                      color: isSel ? primaryGreen : const Color(0xFF475569),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
                     ),
 
                     const SizedBox(height: 14),
@@ -453,6 +541,120 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                   ],
                 ),
               ),
+
+              // Card 3: Additional details (Custom Fields)
+              if (_customFields.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFF1F5F9)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Additional details',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Custom fields',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Specific information defined by your facility',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                      const SizedBox(height: 16),
+                      ..._customFields.map((field) {
+                        final fName = field['fieldName']?.toString() ?? '';
+                        final isReq = field['isRequired'] == true;
+                        final fType = field['fieldType']?.toString() ?? 'TEXT';
+                        final controller = _customControllers[fName];
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    fName,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                  if (isReq)
+                                    const Text(
+                                      ' *',
+                                      style: TextStyle(
+                                        color: Color(0xFFEF4444),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: controller,
+                                keyboardType: fType == 'NUMBER'
+                                    ? TextInputType.number
+                                    : (fType == 'DATE' ? TextInputType.datetime : TextInputType.text),
+                                style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                                decoration: InputDecoration(
+                                  hintText: fType == 'DATE' ? 'YYYY-MM-DD' : 'Enter $fName',
+                                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: primaryGreen, width: 1.5),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 24),
 

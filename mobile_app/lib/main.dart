@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'views/add_member_screen.dart';
 import 'views/app_plan_selection_screen.dart';
 import 'views/member_detail_screen.dart';
+import 'views/plan_detail_screen.dart';
 import 'views/settings_screen.dart';
 import 'views/login_screen.dart';
 import 'services/api_service.dart';
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -276,8 +277,9 @@ class HomeScreenView extends StatefulWidget {
 class _HomeScreenViewState extends State<HomeScreenView> {
   bool _isLoading = true;
   double _totalCollected = 0;
+  double _totalPending = 0;
   List<dynamic> _allMembers = [];
-  String _activeFilter = 'ALL'; // ALL, PAID, UNPAID
+  String _activeFilter = 'ALL'; // ALL, PAID, UNPAID, FROZEN
 
   @override
   void initState() {
@@ -294,6 +296,7 @@ class _HomeScreenViewState extends State<HomeScreenView> {
       if (mounted) {
         setState(() {
           _totalCollected = (summaryRes['summary']?['totalIncome'] as num?)?.toDouble() ?? 0.0;
+          _totalPending = (summaryRes['summary']?['totalPending'] as num?)?.toDouble() ?? 0.0;
           _allMembers = membersList;
           _isLoading = false;
         });
@@ -302,6 +305,15 @@ class _HomeScreenViewState extends State<HomeScreenView> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _sendWhatsAppReminder(String phone, String name, dynamic amount) async {
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    final msg = Uri.encodeComponent('Hi $name, this is a friendly reminder regarding your pending fee of ₹$amount. Please clear it at your earliest convenience.');
+    final uri = Uri.parse('https://wa.me/$cleanPhone?text=$msg');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -321,10 +333,12 @@ class _HomeScreenViewState extends State<HomeScreenView> {
 
     final paidMembers = _allMembers.where((m) => m['status'] == 'PAID').toList();
     final unpaidMembers = _allMembers.where((m) => m['status'] == 'UNPAID').toList();
+    final frozenMembers = _allMembers.where((m) => m['status'] == 'FROZEN').toList();
 
     List<dynamic> displayedMembers = _allMembers;
     if (_activeFilter == 'PAID') displayedMembers = paidMembers;
     if (_activeFilter == 'UNPAID') displayedMembers = unpaidMembers;
+    if (_activeFilter == 'FROZEN') displayedMembers = frozenMembers;
 
     return RefreshIndicator(
       onRefresh: _loadDashboardData,
@@ -411,13 +425,13 @@ class _HomeScreenViewState extends State<HomeScreenView> {
             ),
             const SizedBox(height: 16),
 
-            // Metrics Row
+            // Metrics Rows (4 cards)
             Row(
               children: [
                 // Card 1: All members
                 Expanded(
                   child: Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
@@ -451,11 +465,11 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Text(
                           '${_allMembers.length}',
                           style: const TextStyle(
-                            fontSize: 28,
+                            fontSize: 26,
                             fontWeight: FontWeight.w900,
                             color: Color(0xFF0F172A),
                           ),
@@ -469,7 +483,7 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                 // Card 2: Total collected
                 Expanded(
                   child: Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
@@ -483,18 +497,18 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                             Container(
                               padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
+                                color: const Color(0xFFDCFCE7),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Icon(
-                                Icons.calendar_today_outlined,
-                                size: 16,
-                                color: Color(0xFF475569),
+                                Icons.payments_outlined,
+                                size: 18,
+                                color: primaryGreen,
                               ),
                             ),
                             const SizedBox(width: 8),
                             const Text(
-                              'Total collected',
+                              'Collected',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
@@ -507,19 +521,130 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                         Text(
                           '₹${_totalCollected.toInt()}',
                           style: const TextStyle(
-                            fontSize: 28,
+                            fontSize: 26,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F172A),
+                            color: primaryGreen,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'of ₹0',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w500,
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                // Card 3: Paid members
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.check_circle_outline_rounded,
+                                size: 18,
+                                color: primaryGreen,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Paid Members',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF334155),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          '${paidMembers.length}',
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: primaryGreen,
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Card 4: Unpaid dues
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEE2E2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.error_outline_rounded,
+                                size: 18,
+                                color: Color(0xFFEF4444),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Pending Dues',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF334155),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Text(
+                              '₹${_totalPending.toInt()}',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFFEF4444),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '(${unpaidMembers.length})',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -638,7 +763,9 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                         const SizedBox(width: 8),
                         _buildFilterPill('Paid (${paidMembers.length})', 'PAID', primaryGreen),
                         const SizedBox(width: 8),
-                        _buildFilterPill('Unpaid (${unpaidMembers.length})', 'UNPAID', primaryGreen),
+                        _buildFilterPill('Unpaid (${unpaidMembers.length})', 'UNPAID', const Color(0xFFEF4444)),
+                        const SizedBox(width: 8),
+                        _buildFilterPill('Frozen (${frozenMembers.length}) ❄️', 'FROZEN', const Color(0xFF0284C7)),
                       ],
                     ),
                   ),
@@ -667,6 +794,25 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                       final phone = m['phone'] ?? '';
                       final status = m['status'] ?? 'PAID';
                       final amount = m['amount'] ?? 0;
+                      final isPaid = status == 'PAID';
+                      final isFrozen = status == 'FROZEN';
+
+                      Color badgeBg;
+                      Color badgeText;
+                      String statusLabel;
+                      if (isPaid) {
+                        badgeBg = const Color(0xFFDCFCE7);
+                        badgeText = const Color(0xFF166534);
+                        statusLabel = 'PAID';
+                      } else if (isFrozen) {
+                        badgeBg = const Color(0xFFE0F2FE);
+                        badgeText = const Color(0xFF0284C7);
+                        statusLabel = '❄️ FROZEN';
+                      } else {
+                        badgeBg = const Color(0xFFFEE2E2);
+                        badgeText = const Color(0xFF991B1B);
+                        statusLabel = 'UNPAID';
+                      }
 
                       return GestureDetector(
                         onTap: () async {
@@ -682,9 +828,15 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                           margin: const EdgeInsets.only(bottom: 10),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAF9),
+                            color: isFrozen ? const Color(0xFFF0F9FF) : const Color(0xFFF8FAF9),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            border: Border.all(
+                              color: isFrozen
+                                  ? const Color(0xFFBAE6FD)
+                                  : status == 'UNPAID'
+                                      ? const Color(0xFFFECACA)
+                                      : const Color(0xFFE2E8F0),
+                            ),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -710,32 +862,46 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                                   ),
                                 ],
                               ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
+                              Row(
                                 children: [
-                                  Text(
-                                    '₹$amount',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF0F172A),
+                                  if (!isPaid && !isFrozen && phone.isNotEmpty)
+                                    IconButton(
+                                      icon: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF25D366), size: 18),
+                                      tooltip: 'Send WhatsApp Reminder',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _sendWhatsAppReminder(phone, name, amount),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: status == 'PAID' ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      status,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        color: status == 'PAID' ? const Color(0xFF166534) : const Color(0xFF991B1B),
+                                  if (!isPaid && !isFrozen && phone.isNotEmpty)
+                                    const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '₹$amount',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w900,
+                                          color: isPaid ? primaryGreen : const Color(0xFF0F172A),
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 2),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: badgeBg,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          statusLabel,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: badgeText,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -956,16 +1122,18 @@ class _PlansScreenViewState extends State<PlansScreenView> {
                   'frequencyMonths': frequencyMonths,
                   'description': descriptionController.text.trim(),
                 });
-                if (success && mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Plan created successfully!'), backgroundColor: Color(0xFF059669)),
-                  );
-                  _loadPlans();
-                } else if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Failed to create plan. Please check backend connection.'), backgroundColor: Colors.redAccent),
-                  );
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  if (success) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Plan created successfully!'), backgroundColor: Color(0xFF059669)),
+                    );
+                    _loadPlans();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Failed to create plan. Please check backend connection.'), backgroundColor: Colors.redAccent),
+                    );
+                  }
                 }
               },
               child: const Text('Create Plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1066,124 +1234,150 @@ class _PlansScreenViewState extends State<PlansScreenView> {
               final isActive = plan['isActive'] ?? true;
               final billing = plan['billing'] ?? '${plan['durationDays'] ?? 30} Days billing';
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE6F4EE),
-                                borderRadius: BorderRadius.circular(10),
+              final groupsCount = plan['groupsCount'] ?? (plan['groups'] as List?)?.length ?? 0;
+
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PlanDetailScreen(plan: plan),
+                    ),
+                  ).then((_) => _loadPlans());
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE6F4EE),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.assignment_outlined,
+                                  size: 20,
+                                  color: primaryGreen,
+                                ),
                               ),
-                              child: const Icon(
-                                Icons.assignment_outlined,
-                                size: 20,
-                                color: primaryGreen,
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    billing,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isActive ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              isActive ? 'Active' : 'Inactive',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: isActive ? const Color(0xFF166534) : const Color(0xFF64748B),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  name,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                  ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '₹${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.people_outline_rounded,
+                                size: 16,
+                                color: Color(0xFF64748B),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$membersCount members',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  billing,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF64748B),
+                              ),
+                              if (groupsCount > 0) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '$groupsCount groups',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
                                   ),
                                 ),
                               ],
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isActive ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            isActive ? 'Active' : 'Inactive',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: isActive ? const Color(0xFF166534) : const Color(0xFF64748B),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '₹${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.people_outline_rounded,
-                              size: 16,
-                              color: Color(0xFF64748B),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '$membersCount members',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF64748B),
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF8FAF9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: Color(0xFF94A3B8),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              width: 24,
-                              height: 24,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFF8FAF9),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.chevron_right_rounded,
-                                size: 18,
-                                color: Color(0xFF94A3B8),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               );
             }),
@@ -1206,6 +1400,7 @@ class ExpensesScreenView extends StatefulWidget {
 class _ExpensesScreenViewState extends State<ExpensesScreenView> {
   bool _isLoading = true;
   List<dynamic> _expenses = [];
+  List<dynamic> _categories = [];
 
   @override
   void initState() {
@@ -1217,9 +1412,11 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
     setState(() => _isLoading = true);
     try {
       final fetched = await ApiService.fetchExpenses();
+      final cats = await ApiService.fetchExpenseCategories();
       if (mounted) {
         setState(() {
           _expenses = fetched;
+          _categories = cats;
           _isLoading = false;
         });
       }
@@ -1230,13 +1427,248 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
     }
   }
 
+  void _openAddExpenseDialog() {
+    final titleController = TextEditingController();
+    final amountController = TextEditingController();
+    String? selectedCategoryId = _categories.isNotEmpty ? _categories.first['id']?.toString() : null;
+    DateTime selectedDate = DateTime.now();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.receipt_long_rounded, color: Color(0xFFF97316)),
+              SizedBox(width: 8),
+              Text('Add Expense', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A))),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Expense Title *', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: titleController,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Electricity Bill, Rent, Salaries',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Amount (₹) *', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    prefixText: '₹ ',
+                    hintText: 'e.g. 5000',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Category', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                      icon: const Icon(Icons.add, size: 16, color: Color(0xFF059669)),
+                      label: const Text('New Category', style: TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w700)),
+                      onPressed: () => _openAddCategoryDialog(onAdded: (newCatId) {
+                        _loadExpenses().then((_) {
+                          setDialogState(() {
+                            selectedCategoryId = newCatId;
+                          });
+                        });
+                      }),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: selectedCategoryId,
+                      hint: const Text('Select or add category'),
+                      items: _categories.map((c) {
+                        return DropdownMenuItem<String>(
+                          value: c['id'].toString(),
+                          child: Text(c['name'] ?? 'Category'),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setDialogState(() => selectedCategoryId = val),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Date', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      setDialogState(() => selectedDate = picked);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+                          style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                        ),
+                        const Icon(Icons.calendar_today_rounded, size: 18, color: Color(0xFF64748B)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                final title = titleController.text.trim();
+                final amount = double.tryParse(amountController.text.trim()) ?? 0.0;
+                if (title.isEmpty || amount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter title and valid amount')),
+                  );
+                  return;
+                }
+                final success = await ApiService.createExpense({
+                  'title': title,
+                  'amount': amount,
+                  'categoryId': selectedCategoryId,
+                  'expenseDate': selectedDate.toIso8601String(),
+                });
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  if (success) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Expense added successfully!'), backgroundColor: Color(0xFF059669)),
+                    );
+                    _loadExpenses();
+                  }
+                }
+              },
+              child: const Text('Add Expense', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openAddCategoryDialog({required Function(String newId) onAdded}) {
+    final catController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Expense Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: TextField(
+          controller: catController,
+          decoration: InputDecoration(
+            hintText: 'e.g. Maintenance, WiFi, Tea & Snacks',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+            onPressed: () async {
+              final name = catController.text.trim();
+              if (name.isNotEmpty) {
+                final success = await ApiService.createExpenseCategory(name);
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (success && mounted) {
+                  final cats = await ApiService.fetchExpenseCategories();
+                  final newly = cats.firstWhere((c) => c['name'] == name, orElse: () => cats.isNotEmpty ? cats.last : null);
+                  if (newly != null) {
+                    onAdded(newly['id'].toString());
+                  }
+                }
+              }
+            },
+            child: const Text('Create', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteExpenseItem(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Expense?'),
+        content: const Text('Are you sure you want to delete this expense record?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final success = await ApiService.deleteExpense(id);
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Expense deleted')));
+        _loadExpenses();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const primaryGreen = Color(0xFF059669);
 
     double totalExp = 0;
+    final Map<String, double> categoryTotals = {};
     for (var e in _expenses) {
-      totalExp += (e['amount'] as num?)?.toDouble() ?? 0.0;
+      final amt = (e['amount'] as num?)?.toDouble() ?? 0.0;
+      totalExp += amt;
+      final catName = e['category']?['name'] ?? 'General';
+      categoryTotals[catName] = (categoryTotals[catName] ?? 0) + amt;
     }
 
     return SingleChildScrollView(
@@ -1248,15 +1680,15 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Expense',
+                'Expenses',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
                   color: Color(0xFF0F172A),
                 ),
               ),
-              ElevatedButton(
-                onPressed: () {},
+              ElevatedButton.icon(
+                onPressed: _openAddExpenseDialog,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryGreen,
                   elevation: 0,
@@ -1265,7 +1697,8 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                child: const Text(
+                icon: const Icon(Icons.add, size: 18, color: Colors.white),
+                label: const Text(
                   'Add expense',
                   style: TextStyle(
                     fontSize: 13,
@@ -1275,46 +1708,6 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-
-          // Month selector
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Month and year',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'September 2026',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                  ],
-                ),
-                Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
-              ],
-            ),
           ),
           const SizedBox(height: 16),
 
@@ -1358,9 +1751,9 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'September 2026',
-                  style: TextStyle(
+                Text(
+                  '${_expenses.length} records recorded',
+                  style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF64748B),
                     fontWeight: FontWeight.w500,
@@ -1369,11 +1762,57 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Month's Expense Section
+          // Category Breakdown chips
+          if (categoryTotals.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Category Breakdown',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: categoryTotals.entries.map((entry) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(entry.key, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                            const SizedBox(width: 6),
+                            Text('₹${entry.value.toInt()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFFF97316))),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Month's Expense List Section
           const Text(
-            "Month's expense",
+            "Expense Records",
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w800,
@@ -1385,16 +1824,32 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
           if (_isLoading)
             const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: primaryGreen)))
           else if (_expenses.isEmpty)
-            const Text(
-              'No expenses recorded for this period yet.',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w500,
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.receipt_long_outlined, size: 40, color: Color(0xFF94A3B8)),
+                  SizedBox(height: 8),
+                  Text('No expenses recorded yet', style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                  SizedBox(height: 4),
+                  Text('Tap "Add expense" above to record gym/facility expenses.', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+                ],
               ),
             )
           else
             ..._expenses.map((exp) {
+              final catName = exp['category']?['name'] ?? 'General';
+              final date = exp['expenseDate'] != null
+                  ? DateTime.parse(exp['expenseDate'].toString()).toString().split(' ')[0]
+                  : '';
+              final id = exp['id']?.toString() ?? '';
+
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
@@ -1406,21 +1861,55 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      exp['title'] ?? 'Expense',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF7ED),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.receipt_rounded, color: Color(0xFFF97316), size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              exp['title'] ?? 'Expense',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$catName${date.isNotEmpty ? ' • $date' : ''}',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    Text(
-                      '₹${exp['amount']}',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFFF97316),
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          '₹${exp['amount']}',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFFF97316),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFF94A3B8)),
+                          tooltip: 'Delete',
+                          onPressed: () => _deleteExpenseItem(id),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1446,6 +1935,13 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
   bool _isLoading = true;
   double _income = 0;
   double _expenses = 0;
+  double _pending = 0;
+  double _collectionRate = 0;
+  int _totalMembers = 0;
+  int _paidMembersCount = 0;
+  int _unpaidMembersCount = 0;
+  List<dynamic> _planRevenue = [];
+  List<dynamic> _expensesByCategory = [];
 
   @override
   void initState() {
@@ -1458,9 +1954,18 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
     try {
       final summaryRes = await ApiService.fetchFinancialSummary();
       if (mounted) {
+        final summary = summaryRes['summary'] ?? {};
         setState(() {
-          _income = (summaryRes['summary']?['totalIncome'] as num?)?.toDouble() ?? 0.0;
-          _expenses = (summaryRes['summary']?['totalExpenses'] as num?)?.toDouble() ?? 0.0;
+          _income = (summary['totalIncome'] as num?)?.toDouble() ?? 0.0;
+          _expenses = (summary['totalExpenses'] as num?)?.toDouble() ?? 0.0;
+          _pending = (summary['totalPending'] as num?)?.toDouble() ?? 0.0;
+          _collectionRate = (summary['collectionRate'] as num?)?.toDouble() ??
+              ((_income + _pending) > 0 ? (_income / (_income + _pending)) * 100 : 0.0);
+          _totalMembers = summary['totalMembers'] ?? 0;
+          _paidMembersCount = summary['paidMembersCount'] ?? 0;
+          _unpaidMembersCount = summary['unpaidMembersCount'] ?? 0;
+          _planRevenue = summaryRes['planRevenue'] ?? [];
+          _expensesByCategory = summaryRes['expensesByCategory'] ?? [];
           _isLoading = false;
         });
       }
@@ -1480,57 +1985,126 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
     }
 
     final netBalance = _income - _expenses;
+    final totalExpected = _income + _pending;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Report',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF0F172A),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Financial Report',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: primaryGreen),
+                onPressed: _loadReport,
+                tooltip: 'Refresh',
+              ),
+            ],
           ),
           const SizedBox(height: 16),
 
-          // Month selector
+          // Collection rate Card (Formula: Collected / Expected * 100)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Month and year',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.insights_rounded, color: primaryGreen, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Collection Rate',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            Text(
+                              '$_paidMembersCount of $_totalMembers payments collected',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 2),
                     Text(
-                      'September 2026',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                      '${_collectionRate.toStringAsFixed(1)}%',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        color: primaryGreen,
                       ),
                     ),
                   ],
                 ),
-                Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: (_collectionRate / 100).clamp(0.0, 1.0),
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    color: primaryGreen,
+                    minHeight: 10,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calculate_outlined, size: 16, color: Color(0xFF64748B)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Formula: (₹${_income.toInt()} collected ÷ ₹${totalExpected.toInt()} expected) × 100',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -1573,15 +2147,15 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
                       Text(
                         '₹${_income.toInt()}',
                         style: const TextStyle(
-                          fontSize: 24,
+                          fontSize: 22,
                           fontWeight: FontWeight.w900,
                           color: Color(0xFF0F172A),
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'All recorded',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      Text(
+                        '$_paidMembersCount paid',
+                        style: const TextStyle(fontSize: 12, color: primaryGreen, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -1605,13 +2179,13 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
                         width: 24,
                         height: 3,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6),
+                          color: netBalance >= 0 ? const Color(0xFF3B82F6) : Colors.redAccent,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'NET BALANCE',
+                        'NET PROFIT',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
@@ -1622,16 +2196,16 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
                       const SizedBox(height: 6),
                       Text(
                         '₹${netBalance.toInt()}',
-                        style: const TextStyle(
-                          fontSize: 24,
+                        style: TextStyle(
+                          fontSize: 22,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
+                          color: netBalance >= 0 ? const Color(0xFF0F172A) : Colors.redAccent,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'After ₹0 expenses',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      Text(
+                        'After ₹${_expenses.toInt()} exp.',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                       ),
                     ],
                   ),
@@ -1641,111 +2215,7 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
           ),
           const SizedBox(height: 16),
 
-          // Collection trend Bar Chart Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Collection trend',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Last five months',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                    Icon(Icons.trending_up_rounded, color: primaryGreen, size: 20),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // 5 Month Bar Columns (May, Jun, Jul, Aug, Sep)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _buildTrendBar('May', '₹0', 0.1, primaryGreen),
-                    _buildTrendBar('Jun', '₹18,500', 0.5, primaryGreen),
-                    _buildTrendBar('Jul', '₹33,500', 0.9, primaryGreen),
-                    _buildTrendBar('Aug', '₹0', 0.1, primaryGreen),
-                    _buildTrendBar('Sep', '₹0', 0.1, primaryGreen),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Collection rate Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.bar_chart_rounded, color: primaryGreen, size: 22),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'Collection rate',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          '0 of 0 members paid',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const Text(
-                  '0%',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Status breakdown Card
+          // Status Breakdown Card
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -1758,7 +2228,7 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Status breakdown',
+                  'Payment Status Overview',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -1766,80 +2236,167 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildStatusRow('Paid', '0', const Color(0xFF059669)),
+                _buildStatusRow('Paid Members', '$_paidMembersCount (₹${_income.toInt()})', const Color(0xFF059669)),
                 const SizedBox(height: 12),
-                _buildStatusRow('Pending', '0', const Color(0xFFF97316)),
+                _buildStatusRow('Pending Dues', '$_unpaidMembersCount (₹${_pending.toInt()})', const Color(0xFFEF4444)),
                 const SizedBox(height: 12),
-                _buildStatusRow('Overdue', '0', const Color(0xFFEF4444)),
+                _buildStatusRow('Total Expected', '₹${totalExpected.toInt()}', const Color(0xFF6366F1)),
               ],
             ),
           ),
           const SizedBox(height: 16),
 
-          // Expense categories Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Expense categories',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+          // Plan Revenue Breakdown
+          if (_planRevenue.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Plan & Group Revenue',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      Text(
+                        '${_planRevenue.length} Plans',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                      ),
+                    ],
                   ),
-                ),
-                SizedBox(height: 12),
-                Text(
-                  'No expenses recorded for this period yet.',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  ..._planRevenue.map((p) {
+                    final planName = p['name'] ?? 'Plan';
+                    final planRev = (p['revenue'] as num?)?.toInt() ?? 0;
+                    final membersCount = p['membersCount'] ?? 0;
+                    final groups = p['groups'] as List<dynamic>? ?? [];
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                planName,
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)),
+                              ),
+                              Text(
+                                '₹$planRev',
+                                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: primaryGreen),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$membersCount members enrolled',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                          ),
+                          if (groups.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                            const SizedBox(height: 8),
+                            ...groups.map((g) {
+                              final gName = g['name'] ?? 'Group';
+                              final gRev = (g['revenue'] as num?)?.toInt() ?? 0;
+                              final gMembers = g['members'] ?? 0;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.subdirectory_arrow_right_rounded, size: 14, color: Color(0xFF94A3B8)),
+                                        const SizedBox(width: 4),
+                                        Text('$gName ($gMembers mem)', style: const TextStyle(fontSize: 12, color: Color(0xFF475569))),
+                                      ],
+                                    ),
+                                    Text('₹$gRev', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 16),
+          ],
+
+          // Expenses by Category Breakdown
+          if (_expensesByCategory.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Expenses by Category',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ..._expensesByCategory.map((cat) {
+                    final catName = cat['category'] ?? 'General';
+                    final catTotal = (cat['total'] as num?)?.toInt() ?? 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            catName,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                          ),
+                          Text(
+                            '₹$catTotal',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFFEF4444)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
         ],
       ),
-    );
-  }
-
-  Widget _buildTrendBar(String month, String amount, double ratio, Color primaryGreen) {
-    return Column(
-      children: [
-        Container(
-          width: 52,
-          height: 90,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE6F4EE),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            width: 52,
-            height: 90 * ratio,
-            decoration: BoxDecoration(
-              color: primaryGreen,
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          month,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          amount,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
-        ),
-      ],
     );
   }
 
