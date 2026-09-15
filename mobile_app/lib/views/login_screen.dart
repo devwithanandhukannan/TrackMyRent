@@ -15,10 +15,26 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   int _selectedRoleIndex = 0; // 0 = Customer / Tenant, 1 = Admin / Owner
   final TextEditingController _phoneController = TextEditingController(text: '9876543210');
-  final TextEditingController _adminEmailController = TextEditingController(text: 'admin');
-  final TextEditingController _adminPasswordController = TextEditingController(text: 'admin');
+
+  // Admin Phone OTP & Registration State
+  final TextEditingController _adminPhoneController = TextEditingController(text: '9876543210');
+  final TextEditingController _adminOtpController = TextEditingController(text: '123456');
+  final TextEditingController _adminOrgNameController = TextEditingController();
+  final TextEditingController _adminOwnerNameController = TextEditingController();
+  String _selectedOrgType = 'GYM';
+
+  bool _otpSent = false;
+  bool _isNewUser = false;
   bool _isLoading = false;
   String _errorMessage = '';
+
+  final List<Map<String, String>> _orgTypes = [
+    {'label': 'Gym & Fitness', 'value': 'GYM'},
+    {'label': 'Hostel & PG', 'value': 'HOSTEL'},
+    {'label': 'Tuition Centre', 'value': 'TUITION_CENTER'},
+    {'label': 'Rental Building', 'value': 'RENTAL'},
+    {'label': 'Academy', 'value': 'ACADEMY'},
+  ];
 
   void _handleCustomerLogin() async {
     final phone = _phoneController.text.trim();
@@ -50,10 +66,84 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _handleAdminLogin() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
-    );
+  void _handleSendAdminOtp() async {
+    final phone = _adminPhoneController.text.trim();
+    if (phone.length < 10) {
+      setState(() => _errorMessage = 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final res = await ApiService.sendOtp(phone);
+      if (res['otp'] != null) {
+        setState(() {
+          _otpSent = true;
+          _isNewUser = res['isNewUser'] ?? false;
+          _adminOtpController.text = res['otp'] ?? '123456';
+          if (res['existingUser'] != null) {
+            _adminOwnerNameController.text = res['existingUser']['name'] ?? '';
+            _adminOrgNameController.text = res['existingUser']['orgName'] ?? '';
+          }
+        });
+      } else {
+        setState(() => _errorMessage = res['error'] ?? 'Could not send OTP');
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Server error while sending OTP');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _handleVerifyAdminOtp() async {
+    final phone = _adminPhoneController.text.trim();
+    final otp = _adminOtpController.text.trim();
+
+    if (otp.isEmpty) {
+      setState(() => _errorMessage = 'Please enter 6-digit OTP code');
+      return;
+    }
+
+    if (_isNewUser) {
+      if (_adminOrgNameController.text.trim().isEmpty || _adminOwnerNameController.text.trim().isEmpty) {
+        setState(() => _errorMessage = 'Please provide Facility Name and Owner Name to register');
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final res = await ApiService.verifyOtp(
+        phone: phone,
+        otp: otp,
+        orgName: _adminOrgNameController.text.trim(),
+        adminName: _adminOwnerNameController.text.trim(),
+        orgType: _selectedOrgType,
+      );
+
+      if (res['token'] != null) {
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
+          );
+        }
+      } else {
+        setState(() => _errorMessage = res['error'] ?? 'Verification failed');
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Could not complete login/registration');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -106,7 +196,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _selectedRoleIndex = 0),
+                          onTap: () => setState(() {
+                            _selectedRoleIndex = 0;
+                            _errorMessage = '';
+                          }),
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             decoration: BoxDecoration(
@@ -127,7 +220,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _selectedRoleIndex = 1),
+                          onTap: () => setState(() {
+                            _selectedRoleIndex = 1;
+                            _errorMessage = '';
+                          }),
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             decoration: BoxDecoration(
@@ -135,7 +231,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              'Admin / Manager',
+                              'Facility Admin / Owner',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13,
@@ -211,7 +307,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ] else ...[
-                  // Admin Login Card
+                  // Admin Phone OTP & Registration Card
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -222,45 +318,167 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Username / Email', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                        const Text('Admin Mobile Number', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 6),
                         TextField(
-                          controller: _adminEmailController,
+                          controller: _adminPhoneController,
+                          enabled: !_otpSent,
+                          keyboardType: TextInputType.phone,
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.slate400),
+                            prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.slate400),
+                            suffixIcon: _otpSent
+                                ? TextButton(
+                                    onPressed: () => setState(() {
+                                      _otpSent = false;
+                                      _isNewUser = false;
+                                    }),
+                                    child: const Text('Change', style: TextStyle(color: AppColors.primary, fontSize: 12)),
+                                  )
+                                : null,
                             filled: true,
                             fillColor: AppColors.background,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        const Text('Password', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _adminPasswordController,
-                          obscureText: true,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.slate400),
-                            filled: true,
-                            fillColor: AppColors.background,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        const SizedBox(height: 16),
+
+                        if (_otpSent) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('6-Digit OTP', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
+                                child: const Text('Demo OTP: 123456', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _adminOtpController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 4, fontWeight: FontWeight.bold),
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.lock_clock_rounded, color: AppColors.slate400),
+                              filled: true,
+                              fillColor: AppColors.background,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                             ),
-                            onPressed: _handleAdminLogin,
-                            child: const Text('Login as Manager', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                           ),
-                        ),
+                          const SizedBox(height: 16),
+
+                          if (_isNewUser) ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blueAccent.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                              ),
+                              child: const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('First-Time Registration', style: TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                                  SizedBox(height: 2),
+                                  Text('Please provide your facility and owner details to get started.', style: TextStyle(color: AppColors.slate400, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text('Facility / Business Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: _adminOrgNameController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'e.g., Apex Gym & Fitness',
+                                hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
+                                prefixIcon: const Icon(Icons.business_rounded, color: AppColors.slate400),
+                                filled: true,
+                                fillColor: AppColors.background,
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text('Owner / Admin Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: _adminOwnerNameController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'e.g., Alex Johnson',
+                                hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
+                                prefixIcon: const Icon(Icons.person_rounded, color: AppColors.slate400),
+                                filled: true,
+                                fillColor: AppColors.background,
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text('Facility Category', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.background,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedOrgType,
+                                  isExpanded: true,
+                                  dropdownColor: AppColors.surface,
+                                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  items: _orgTypes.map((type) {
+                                    return DropdownMenuItem<String>(
+                                      value: type['value'],
+                                      child: Text(type['label']!),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    if (val != null) setState(() => _selectedOrgType = val);
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: _isLoading ? null : _handleVerifyAdminOtp,
+                              child: _isLoading
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : Text(
+                                      _isNewUser ? 'Complete Registration & Login' : 'Verify OTP & Login',
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                            ),
+                          ),
+                        ] else ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: _isLoading ? null : _handleSendAdminOtp,
+                              child: _isLoading
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Text('Send OTP Code', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -285,3 +503,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+

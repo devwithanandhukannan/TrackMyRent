@@ -209,3 +209,152 @@ export const customerLogin = async (req: Request, res: Response) => {
     res.status(500).json({ error: (error as Error).message });
   }
 };
+
+/**
+ * Send OTP for Facility Admin / Owner Phone Login
+ */
+export const sendOtp = async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+    const cleanedPhone = String(phone).replace(/[^0-9]/g, '');
+    if (cleanedPhone.length < 10) {
+      return res.status(400).json({ error: 'Please enter a valid 10-digit mobile number' });
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: { phone: { contains: cleanedPhone } },
+      include: { organization: true },
+    });
+
+    res.status(200).json({
+      message: 'OTP sent successfully',
+      otp: '123456',
+      isNewUser: !existingUser,
+      existingUser: existingUser
+        ? {
+            name: existingUser.name,
+            email: existingUser.email,
+            phone: existingUser.phone,
+            orgName: existingUser.organization.name,
+          }
+        : null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+};
+
+/**
+ * Verify OTP & Register Facility Admin on First-Time Login
+ */
+export const verifyOtp = async (req: Request, res: Response) => {
+  try {
+    const { phone, otp, orgName, adminName, orgType, email } = req.body;
+
+    if (!phone || !otp) {
+      return res.status(400).json({ error: 'Phone number and OTP are required' });
+    }
+
+    if (otp !== '123456') {
+      return res.status(400).json({ error: 'Invalid OTP. Use demo OTP: 123456' });
+    }
+
+    const cleanedPhone = String(phone).replace(/[^0-9]/g, '');
+
+    let user = await prisma.user.findFirst({
+      where: { phone: { contains: cleanedPhone } },
+      include: { organization: true },
+    });
+
+    if (!user) {
+      if (!orgName || !adminName) {
+        return res.status(400).json({
+          error: 'Registration details (orgName, adminName) required for first-time login',
+          isNewUser: true,
+        });
+      }
+
+      const generatedEmail = email && String(email).trim()
+        ? String(email).trim().toLowerCase()
+        : `admin_${cleanedPhone}_${Date.now()}@renttrack.app`;
+
+      const validOrgType = orgType ? String(orgType).toUpperCase() : 'GYM';
+      const passwordHash = await bcrypt.hash('otp_authenticated', 10);
+
+      const org = await prisma.organization.create({
+        data: {
+          name: orgName,
+          type: validOrgType as any,
+          users: {
+            create: {
+              name: adminName,
+              email: generatedEmail,
+              phone: cleanedPhone,
+              passwordHash,
+              role: 'ORG_ADMIN',
+            },
+          },
+          subscriptionCredit: {
+            create: {
+              planType: 'CREDIT',
+              subscriptionName: 'Plus Trial',
+              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              purchasedCredits: 100,
+            },
+          },
+        },
+        include: { users: true, subscriptionCredit: true },
+      });
+
+      user = await prisma.user.findUnique({
+        where: { id: org.users[0].id },
+        include: { organization: true },
+      });
+    }
+
+    if (!user) {
+      return res.status(400).json({ error: 'User creation failed' });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, orgId: user.organizationId, role: user.role },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '30d' }
+    );
+
+    res.status(200).json({
+      message: 'OTP verification successful',
+      token,
+      user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role },
+      organization: user.organization,
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+};
+
+/**
+ * Fetch all registered facilities / organizations for Admin Panel
+ */
+export const getAllOrganizations = async (req: Request, res: Response) => {
+  try {
+    const orgs = await prisma.organization.findMany({
+      include: {
+        users: { select: { id: true, name: true, email: true, phone: true, role: true } },
+        subscriptionCredit: true,
+        _count: {
+          select: { members: true, plans: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.status(200).json({ organizations: orgs });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+};
+

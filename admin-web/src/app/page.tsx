@@ -78,16 +78,26 @@ interface AppSubscriptionPlan {
 export default function AdminDashboard() {
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [loginMode, setLoginMode] = useState<"OTP" | "PASSWORD">("OTP");
+  const [loginPhone, setLoginPhone] = useState("9876543210");
+  const [loginOtp, setLoginOtp] = useState("123456");
+  const [otpSent, setOtpSent] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [regOrgName, setRegOrgName] = useState("");
+  const [regAdminName, setRegAdminName] = useState("");
+  const [regOrgType, setRegOrgType] = useState("GYM");
+
   const [loginEmail, setLoginEmail] = useState("admin");
   const [loginPassword, setLoginPassword] = useState("admin");
   const [loginError, setLoginError] = useState("");
-  const [authOrg, setAuthOrg] = useState<{ id: string; name: string } | null>(null);
+  const [authOrg, setAuthOrg] = useState<{ id: string; name: string; type?: string } | null>(null);
 
   // Tab & Filter states
-  const [activeTab, setActiveTab] = useState<"members" | "plans" | "expenses" | "reports" | "custom_fields" | "app_subscription_plans">("members");
+  const [activeTab, setActiveTab] = useState<"members" | "plans" | "expenses" | "reports" | "custom_fields" | "app_subscription_plans" | "facilities">("members");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PAID" | "UNPAID" | "FROZEN">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [allOrgs, setAllOrgs] = useState<any[]>([]);
 
   // Data states
   const [summary, setSummary] = useState<FinancialSummary>({
@@ -149,10 +159,75 @@ export default function AdminDashboard() {
       setAuthOrg(parsedOrg);
       fetchDashboardData(parsedOrg.id);
       fetchWhatsAppSettings(parsedOrg.id);
+      fetchOrganizationsList();
     }
   }, []);
 
-  // Login handler
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: loginPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLoginError(data.error || "Failed to send OTP");
+        return;
+      }
+      setOtpSent(true);
+      setIsNewUser(data.isNewUser || false);
+      setLoginOtp(data.otp || "123456");
+      if (data.existingUser) {
+        setRegAdminName(data.existingUser.name || "");
+        setRegOrgName(data.existingUser.orgName || "");
+      }
+    } catch (err) {
+      setLoginError("Could not connect to backend server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: loginPhone,
+          otp: loginOtp,
+          orgName: regOrgName,
+          adminName: regAdminName,
+          orgType: regOrgType,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLoginError(data.error || "OTP verification failed");
+        return;
+      }
+      localStorage.setItem("renttrack_token", data.token);
+      localStorage.setItem("renttrack_org", JSON.stringify(data.organization));
+      setIsAuthenticated(true);
+      setAuthOrg(data.organization);
+      fetchDashboardData(data.organization.id);
+      fetchWhatsAppSettings(data.organization.id);
+      fetchOrganizationsList();
+    } catch (err) {
+      setLoginError("Could not verify OTP.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Password Login handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -177,12 +252,33 @@ export default function AdminDashboard() {
       setAuthOrg(data.organization);
       fetchDashboardData(data.organization.id);
       fetchWhatsAppSettings(data.organization.id);
+      fetchOrganizationsList();
     } catch (err) {
       setLoginError("Could not connect to backend server. Make sure backend is running on port 5001.");
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchOrganizationsList = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/organizations`);
+      if (res.ok) {
+        const data = await res.json();
+        setAllOrgs(data.organizations || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch organizations list:", err);
+    }
+  };
+
+  const switchFacility = (org: any) => {
+    localStorage.setItem("renttrack_org", JSON.stringify(org));
+    setAuthOrg(org);
+    fetchDashboardData(org.id);
+    fetchWhatsAppSettings(org.id);
+  };
+
 
   const handleLogout = () => {
     localStorage.removeItem("renttrack_token");
@@ -451,48 +547,178 @@ export default function AdminDashboard() {
             <p className="text-xs text-slate-400">Gym, Academy, PG & Tenant Management</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            {loginError && (
-              <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{loginError}</span>
-              </div>
-            )}
-
-            <div>
-              <label className="text-xs font-semibold text-slate-400 block mb-1.5">Username / Email</label>
-              <input
-                type="text"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="Username or Email"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-400 block mb-1.5">Password</label>
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Password"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all"
-                required
-              />
-            </div>
-
+          {/* Login Method Tabs */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-900 rounded-xl border border-slate-800">
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-3 rounded-xl shadow-lg shadow-cyan-500/25 text-sm transition-all flex items-center justify-center gap-2 mt-2"
+              type="button"
+              onClick={() => {
+                setLoginMode("OTP");
+                setLoginError("");
+              }}
+              className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                loginMode === "OTP" ? "bg-cyan-500 text-slate-950 shadow-md" : "text-slate-400 hover:text-white"
+              }`}
             >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Sign In to Dashboard
+              Phone OTP / Register
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => {
+                setLoginMode("PASSWORD");
+                setLoginError("");
+              }}
+              className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                loginMode === "PASSWORD" ? "bg-cyan-500 text-slate-950 shadow-md" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Email & Password
+            </button>
+          </div>
+
+          {loginError && (
+            <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          {loginMode === "OTP" ? (
+            <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1.5">Admin Mobile Number</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    disabled={otpSent}
+                    value={loginPhone}
+                    onChange={(e) => setLoginPhone(e.target.value)}
+                    placeholder="10-digit mobile number"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all disabled:opacity-60"
+                    required
+                  />
+                  {otpSent && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpSent(false);
+                        setIsNewUser(false);
+                      }}
+                      className="absolute right-3 top-2.5 text-xs text-cyan-400 font-bold hover:underline"
+                    >
+                      Change
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {otpSent && (
+                <>
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-xs font-semibold text-slate-400">6-Digit OTP Code</label>
+                      <span className="text-[10px] bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded font-bold">Demo OTP: 123456</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={loginOtp}
+                      onChange={(e) => setLoginOtp(e.target.value)}
+                      placeholder="123456"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-base text-white tracking-widest font-bold focus:outline-none focus:border-cyan-500 transition-all"
+                      required
+                    />
+                  </div>
+
+                  {isNewUser && (
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-3">
+                      <div className="text-xs font-bold text-blue-400">First-Time Facility Registration</div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-400 block mb-1">Facility / Business Name *</label>
+                        <input
+                          type="text"
+                          value={regOrgName}
+                          onChange={(e) => setRegOrgName(e.target.value)}
+                          placeholder="e.g. Apex Gym & Fitness"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-400 block mb-1">Owner / Admin Name *</label>
+                        <input
+                          type="text"
+                          value={regAdminName}
+                          onChange={(e) => setRegAdminName(e.target.value)}
+                          placeholder="e.g. Alex Johnson"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-400 block mb-1">Facility Category</label>
+                        <select
+                          value={regOrgType}
+                          onChange={(e) => setRegOrgType(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                        >
+                          <option value="GYM">Gym & Fitness</option>
+                          <option value="HOSTEL">Hostel & PG</option>
+                          <option value="TUITION_CENTER">Tuition Centre</option>
+                          <option value="RENTAL">Rental Building</option>
+                          <option value="ACADEMY">Academy</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-3 rounded-xl shadow-lg shadow-cyan-500/25 text-sm transition-all flex items-center justify-center gap-2 mt-2"
+              >
+                {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}{" "}
+                {otpSent ? (isNewUser ? "Complete Registration & Sign In" : "Verify OTP & Sign In") : "Send OTP Code"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1.5">Username / Email</label>
+                <input
+                  type="text"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="Username or Email"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1.5">Password</label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Password"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-3 rounded-xl shadow-lg shadow-cyan-500/25 text-sm transition-all flex items-center justify-center gap-2 mt-2"
+              >
+                {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Sign In to Dashboard
+              </button>
+            </form>
+          )}
         </div>
       </div>
+
     );
   }
 
@@ -612,9 +838,21 @@ export default function AdminDashboard() {
           >
             <Sparkles className="w-4 h-4" /> App Subscription Plans
           </button>
+          <button
+            onClick={() => {
+              setActiveTab("facilities");
+              fetchOrganizationsList();
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              activeTab === "facilities" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" /> Registered Facilities ({allOrgs.length})
+          </button>
         </div>
 
         {/* Summary Metric Cards */}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="glass-card p-5 rounded-2xl border border-slate-800/80 hover:border-slate-700 transition-all">
             <div className="flex justify-between items-start mb-3">
@@ -883,7 +1121,107 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* Facilities Directory Tab Content */}
+        {activeTab === "facilities" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white tracking-wide">Registered Facility Admins & Businesses</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  View all registered facility admins, their facility categories, owner details, and member counts from PostgreSQL.
+                </p>
+              </div>
+              <button
+                onClick={fetchOrganizationsList}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh List
+              </button>
+            </div>
+
+            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider font-semibold">
+                      <th className="p-4">Facility / Business</th>
+                      <th className="p-4">Category</th>
+                      <th className="p-4">Admin / Owner</th>
+                      <th className="p-4">Phone Number</th>
+                      <th className="p-4">Members</th>
+                      <th className="p-4">Plans</th>
+                      <th className="p-4">Registered Date</th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-sm">
+                    {allOrgs.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-500 text-xs">
+                          No registered facilities found.
+                        </td>
+                      </tr>
+                    ) : (
+                      allOrgs.map((org) => {
+                        const adminUser = org.users?.[0];
+                        const isCurrentOrg = authOrg?.id === org.id;
+
+                        return (
+                          <tr key={org.id} className="hover:bg-slate-900/40 transition-all">
+                            <td className="p-4 font-bold text-white flex items-center gap-2">
+                              {org.name}
+                              {isCurrentOrg && (
+                                <span className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                  Current Active
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-cyan-300">
+                                {org.type || "GYM"}
+                              </span>
+                            </td>
+                            <td className="p-4 font-medium text-slate-200">
+                              {adminUser?.name || "Facility Admin"}
+                            </td>
+                            <td className="p-4 text-slate-400 text-xs font-mono">
+                              {adminUser?.phone || "N/A"}
+                            </td>
+                            <td className="p-4 text-slate-300 font-bold">
+                              {org._count?.members ?? 0}
+                            </td>
+                            <td className="p-4 text-slate-300">
+                              {org._count?.plans ?? 0}
+                            </td>
+                            <td className="p-4 text-xs text-slate-400">
+                              {new Date(org.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => switchFacility(org)}
+                                disabled={isCurrentOrg}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                  isCurrentOrg
+                                    ? "bg-slate-900 text-slate-600 cursor-not-allowed border border-slate-800"
+                                    : "bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md shadow-cyan-500/20"
+                                }`}
+                              >
+                                {isCurrentOrg ? "Selected" : "Switch Context"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
+
 
       {/* App Plan Create / Edit Modal */}
       {showAppPlanModal && (

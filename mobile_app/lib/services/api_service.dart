@@ -14,6 +14,60 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  static Future<Map<String, dynamic>> sendOtp(String phone) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/send-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'error': 'Could not send OTP. Server offline.'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> verifyOtp({
+    required String phone,
+    required String otp,
+    String? orgName,
+    String? adminName,
+    String? orgType,
+    String? email,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+          'otp': otp,
+          if (orgName != null && orgName.isNotEmpty) 'orgName': orgName,
+          if (adminName != null && adminName.isNotEmpty) 'adminName': adminName,
+          if (orgType != null && orgType.isNotEmpty) 'orgType': orgType,
+          if (email != null && email.isNotEmpty) 'email': email,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'error': 'Could not verify OTP. Server offline.'};
+    }
+  }
+
+  static Future<List<dynamic>> fetchOrganizations() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/auth/organizations'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['organizations'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+
   static Future<Map<String, dynamic>> fetchFinancialSummary() async {
     final response = await http.get(Uri.parse('$baseUrl/reports/summary?organizationId=$demoOrgId'));
     if (response.statusCode == 200) {
