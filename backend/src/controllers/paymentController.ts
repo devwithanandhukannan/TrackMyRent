@@ -334,3 +334,114 @@ export const getMemberSchedules = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Send WhatsApp Payment Reminder with Direct Tenant Payout Link (UPI / Razorpay)
+ * Deducts 1 credit from Tenant's balance. If credits = 0, falls back to direct WhatsApp opening.
+ */
+export const sendPaymentReminder = async (req: Request, res: Response) => {
+  try {
+    const { scheduleId } = req.body;
+
+    if (!scheduleId) {
+      return res.status(400).json({ success: false, error: 'scheduleId is required' });
+    }
+
+    const schedule = await prisma.paymentSchedule.findUnique({
+      where: { id: scheduleId },
+      include: {
+        member: {
+          include: { organization: true, plan: true },
+        },
+      },
+    });
+
+    if (!schedule || !schedule.member) {
+      return res.status(404).json({ success: false, error: 'Payment schedule or member not found' });
+    }
+
+    const member = schedule.member;
+    const org = member.organization;
+
+    // 1. Credit balance deduction check
+    const subCredit = await prisma.subscriptionCredit.findUnique({
+      where: { organizationId: org.id },
+    });
+
+    let creditDeducted = false;
+    let remainingCredits = 0;
+
+    if (subCredit) {
+      const available = subCredit.purchasedCredits - subCredit.usedCredits;
+      if (available > 0) {
+        const updated = await prisma.subscriptionCredit.update({
+          where: { organizationId: org.id },
+          data: { usedCredits: subCredit.usedCredits + 1 },
+        });
+        creditDeducted = true;
+        remainingCredits = updated.purchasedCredits - updated.usedCredits;
+      } else {
+        remainingCredits = 0;
+      }
+    }
+
+    // 2. Construct Direct Tenant Payout Link
+    let paymentLink = '';
+    if (org.bankUpiId) {
+      const payeeName = encodeURIComponent(org.bankAccountName || org.name);
+      const note = encodeURIComponent(`Rent ${schedule.monthYear || ''} - ${member.fullName}`);
+      paymentLink = `upi://pay?pa=${encodeURIComponent(org.bankUpiId)}&pn=${payeeName}&am=${schedule.amount}&cu=INR&tn=${note}`;
+    } else {
+      paymentLink = `https://trackmyrent.app/pay/${schedule.id}`;
+    }
+
+    // 3. Fetch WhatsApp template or use standard format
+    const template = await prisma.whatsAppTemplate.findFirst({
+      where: {
+        OR: [
+          { organizationId: org.id, templateType: 'RENT_REMINDER' },
+          { organizationId: null, templateType: 'RENT_REMINDER' },
+        ],
+      },
+      orderBy: { organizationId: 'desc' },
+    });
+
+    const dueDateFormatted = new Date(schedule.dueDate).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    let messageBody = '';
+    if (template && template.messageText) {
+      messageBody = template.messageText
+        .replace(/\{\{1\}\}/g, member.fullName)
+        .replace(/\{\{2\}\}/g, String(schedule.amount))
+        .replace(/\{\{3\}\}/g, schedule.monthYear || 'Current Month')
+        .replace(/\{\{4\}\}/g, dueDateFormatted)
+        .replace(/\{\{5\}\}/g, paymentLink);
+    } else {
+      messageBody = `Hello ${member.fullName}, your payment of ₹${schedule.amount} for ${schedule.monthYear || 'rent'} is due on ${dueDateFormatted}. Pay directly to ${org.name} via: ${paymentLink}`;
+    }
+
+    const cleanPhone = String(member.phone).replace(/[^0-9]/g, '');
+    const fullPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const directWhatsAppUrl = `https://wa.me/${fullPhone}?text=${encodeURIComponent(messageBody)}`;
+
+    return res.status(200).json({
+      success: true,
+      message: creditDeducted ? 'Payment reminder generated and 1 credit deducted' : 'Reminder ready via direct WhatsApp (0 credits remaining)',
+      creditDeducted,
+      remainingCredits,
+      paymentLink,
+      messageBody,
+      directWhatsAppUrl,
+      customer: {
+        name: member.fullName,
+        phone: member.phone,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+};
+

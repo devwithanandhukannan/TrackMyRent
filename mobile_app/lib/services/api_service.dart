@@ -426,4 +426,41 @@ class ApiService {
     );
     return response.statusCode == 200;
   }
+
+  // ─── Tenant Payout & Subscription ──────────────────────────────────────────
+
+  static Future<bool> updateTenantPayout(Map<String, dynamic> payoutData) async {
+    final orgId = await getOrgId();
+    final response = await http.put(
+      Uri.parse('$baseUrl/auth/organization/$orgId/payout'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payoutData),
+    );
+    return response.statusCode == 200;
+  }
+
+  static Future<Map<String, dynamic>?> subscribeAppPlan(String appPlanId) async {
+    final orgId = await getOrgId();
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/organization/$orgId/subscribe-app-plan'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'appPlanId': appPlanId}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> sendPaymentReminder(String scheduleId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/payments/send-reminder'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'scheduleId': scheduleId}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return null;
+  }
 }

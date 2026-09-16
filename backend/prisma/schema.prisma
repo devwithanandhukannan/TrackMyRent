@@ -68,6 +68,16 @@ model Organization {
   whatsappPhoneNumberId String?
   whatsappAccessToken   String?
   whatsappBusinessId    String?
+
+  // Tenant Payout Details (when customers pay rent)
+  bankAccountNumber     String?
+  bankIfsc              String?
+  bankAccountName       String?
+  bankUpiId             String?
+  tenantRazorpayKeyId   String?
+  tenantRazorpayKeySecret String?
+  selectedAppPlanId     String?
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -234,26 +244,43 @@ model SubscriptionCredit {
 }
 
 model WhatsAppTemplate {
-  id             String       @id @default(uuid())
-  organizationId String
-  templateType   String
+  id             String        @id @default(uuid())
+  organizationId String?
+  name           String?       // Display title e.g. "Rent / Fee Due Reminder"
+  templateId     String?       // Meta approved template ID or dummy ID
+  templateType   String        // "OTP", "RENT_REMINDER", "PAYMENT_RECEIPT", "MEMBER_WELCOME", "RENEWAL_REMINDER", "MONTH_FREEZE"
+  category       String        @default("UTILITY") // "AUTHENTICATION", "UTILITY", "MARKETING"
+  language       String        @default("en")      // "en", "ml"
   messageText    String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model AppSubscriptionPlan {
-  id             String   @id @default(uuid())
-  name           String   // e.g. "Free trial 30 days", "Plus", "Max", "Max+"
-  price          Float    // e.g. 0, 399, 699, 999
-  tag            String?  // e.g. "Default", "Popular"
-  description    String   // e.g. "All features unlocked for one month"
-  durationMonths Int      @default(1)
-  isFreeTrial    Boolean  @default(false)
-  isActive       Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String   // e.g. "Free trial 30 days", "Plus", "Max", "Max+"
+  price           Float    // e.g. 0, 399, 699, 999
+  tag             String?  // e.g. "Default", "Popular"
+  description     String   // e.g. "All features unlocked for one month"
+  durationMonths  Int      @default(1)
+  whatsappCredits Int      @default(100) // Compulsory field
+  isFreeTrial     Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique // e.g. RAZORPAY_KEY_ID, WHATSAPP_PHONE_NUMBER_ID, etc.
+  value       String
+  category    String   @default("GENERAL") // "RAZORPAY", "WHATSAPP", "GENERAL"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+

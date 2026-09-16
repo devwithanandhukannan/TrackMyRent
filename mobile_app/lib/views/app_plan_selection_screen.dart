@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../main.dart';
+import '../services/api_service.dart';
 
 class AppPlanItem {
   final String id;
@@ -10,6 +11,7 @@ class AppPlanItem {
   final String? tag;
   final String description;
   final int durationMonths;
+  final int whatsappCredits;
   final bool isFreeTrial;
 
   AppPlanItem({
@@ -19,6 +21,7 @@ class AppPlanItem {
     this.tag,
     required this.description,
     required this.durationMonths,
+    this.whatsappCredits = 100,
     required this.isFreeTrial,
   });
 
@@ -30,6 +33,7 @@ class AppPlanItem {
       tag: json['tag'],
       description: json['description'] ?? '',
       durationMonths: json['durationMonths'] ?? 1,
+      whatsappCredits: json['whatsappCredits'] ?? 100,
       isFreeTrial: json['isFreeTrial'] ?? false,
     );
   }
@@ -56,6 +60,7 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
       tag: 'Default',
       description: 'All features unlocked for one month',
       durationMonths: 1,
+      whatsappCredits: 100,
       isFreeTrial: true,
     ),
     AppPlanItem(
@@ -65,6 +70,7 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
       tag: null,
       description: 'All features unlocked for one month',
       durationMonths: 1,
+      whatsappCredits: 250,
       isFreeTrial: false,
     ),
     AppPlanItem(
@@ -74,6 +80,7 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
       tag: null,
       description: 'All features unlocked for three months',
       durationMonths: 3,
+      whatsappCredits: 500,
       isFreeTrial: false,
     ),
     AppPlanItem(
@@ -83,6 +90,7 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
       tag: 'Popular',
       description: 'All features unlocked for six months',
       durationMonths: 6,
+      whatsappCredits: 1000,
       isFreeTrial: false,
     ),
   ];
@@ -125,15 +133,21 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
     });
   }
 
-  void _onContinue() {
+  Future<void> _onContinue() async {
     final selectedPlan = _plans.firstWhere(
       (p) => p.id == _selectedPlanId,
       orElse: () => _plans.first,
     );
 
+    try {
+      await ApiService.subscribeAppPlan(selectedPlan.id);
+    } catch (_) {}
+
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Selected plan: ${selectedPlan.name} (${selectedPlan.price == 0 ? "Free Trial" : "₹${selectedPlan.price.toInt()}"})'),
+        content: Text('Activated ${selectedPlan.name}: ${selectedPlan.whatsappCredits} WhatsApp Credits added!'),
         backgroundColor: const Color(0xFF059669),
       ),
     );
@@ -306,6 +320,30 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
                                       fontSize: 13,
                                       color: Color(0xFF64748B),
                                       fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF0FDF4),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.mark_chat_unread_rounded, size: 14, color: primaryGreen),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${plan.whatsappCredits} WhatsApp Credits included',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF15803D),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],

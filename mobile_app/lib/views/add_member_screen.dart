@@ -103,6 +103,16 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       return;
     }
 
+    if (_selectedPlanId == null || _selectedPlanId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Plan is mandatory: You cannot add a member without selecting a Plan.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     // Validate and collect custom fields
     final Map<String, dynamic> customData = {};
     for (var f in _customFields) {

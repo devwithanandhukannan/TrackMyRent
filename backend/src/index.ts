@@ -20,6 +20,7 @@ import creditRoutes from './routes/creditRoutes';
 import appPlanRoutes from './routes/appPlanRoutes';
 import expenseCategoryRoutes from './routes/expenseCategoryRoutes';
 import whatsappTemplateRoutes from './routes/whatsappTemplateRoutes';
+import settingRoutes from './routes/settingRoutes';
 
 app.use(cors());
 app.use(express.json());
@@ -33,6 +34,7 @@ app.use('/api/expenses/categories', expenseCategoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/credits', creditRoutes);
 app.use('/api/app-plans', appPlanRoutes);
+app.use('/api/settings', settingRoutes);
 app.use('/api/settings/whatsapp-templates', whatsappTemplateRoutes);
 
 // Health Check Endpoint

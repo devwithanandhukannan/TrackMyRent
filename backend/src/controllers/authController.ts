@@ -384,3 +384,103 @@ export const getAllOrganizations = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Update Tenant's Bank / UPI Payout Details (Direct Customer Payments)
+ */
+export const updateTenantPayout = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      bankAccountNumber,
+      bankIfsc,
+      bankAccountName,
+      bankUpiId,
+      tenantRazorpayKeyId,
+      tenantRazorpayKeySecret,
+    } = req.body;
+
+    const org = await prisma.organization.update({
+      where: { id },
+      data: {
+        ...(bankAccountNumber !== undefined && { bankAccountNumber }),
+        ...(bankIfsc !== undefined && { bankIfsc }),
+        ...(bankAccountName !== undefined && { bankAccountName }),
+        ...(bankUpiId !== undefined && { bankUpiId }),
+        ...(tenantRazorpayKeyId !== undefined && { tenantRazorpayKeyId }),
+        ...(tenantRazorpayKeySecret !== undefined && { tenantRazorpayKeySecret }),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Payout details updated successfully. Customer payments will route directly to your account.',
+      organization: org,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+};
+
+/**
+ * Tenant chooses an AppSubscriptionPlan (with compulsory WhatsApp credits added to their balance)
+ */
+export const subscribeAppPlan = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params; // organizationId
+    const { appPlanId } = req.body;
+
+    if (!appPlanId) {
+      return res.status(400).json({ success: false, error: 'appPlanId is required' });
+    }
+
+    const plan = await prisma.appSubscriptionPlan.findUnique({
+      where: { id: appPlanId },
+    });
+
+    if (!plan) {
+      return res.status(404).json({ success: false, error: 'Subscription plan not found' });
+    }
+
+    const durationDays = plan.durationMonths * 30;
+    const newExpiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+
+    // Upsert subscription credit
+    const subCredit = await prisma.subscriptionCredit.upsert({
+      where: { organizationId: id },
+      update: {
+        planType: 'CREDIT',
+        subscriptionName: plan.name,
+        expiresAt: newExpiresAt,
+        purchasedCredits: { increment: plan.whatsappCredits },
+      },
+      create: {
+        organizationId: id,
+        planType: 'CREDIT',
+        subscriptionName: plan.name,
+        expiresAt: newExpiresAt,
+        purchasedCredits: plan.whatsappCredits,
+        usedCredits: 0,
+      },
+    });
+
+    // Update organization with selected plan
+    const updatedOrg = await prisma.organization.update({
+      where: { id },
+      data: { selectedAppPlanId: plan.id },
+      include: { subscriptionCredit: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Subscribed to ${plan.name}! ${plan.whatsappCredits} WhatsApp credits added.`,
+      organization: updatedOrg,
+      credits: {
+        available: subCredit.purchasedCredits - subCredit.usedCredits,
+        total: subCredit.purchasedCredits,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+};
+

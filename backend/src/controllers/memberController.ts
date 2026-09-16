@@ -25,14 +25,18 @@ export const createMember = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'organizationId, fullName, and phone are required' });
     }
 
-    let computedDuration = duration;
-    let selectedPlan = null;
+    if (!planId) {
+      return res.status(400).json({ error: 'Plan is mandatory: Member cannot be created without selecting a Plan.' });
+    }
 
-    if (planId) {
-      selectedPlan = await prisma.plan.findUnique({ where: { id: planId } });
-      if (selectedPlan && !duration) {
-        computedDuration = selectedPlan.durationType === 'DAYS_30' ? `${selectedPlan.durationDays} Days` : 'Monthly (Custom Date)';
-      }
+    let computedDuration = duration;
+    const selectedPlan = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!selectedPlan) {
+      return res.status(404).json({ error: 'Selected Plan not found. Please choose a valid plan.' });
+    }
+
+    if (!duration) {
+      computedDuration = selectedPlan.durationType === 'DAYS_30' ? `${selectedPlan.durationDays} Days` : 'Monthly (Custom Date)';
     }
 
     const member = await prisma.member.create({

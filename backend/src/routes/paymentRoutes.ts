@@ -10,6 +10,7 @@ import {
   getMemberSchedules,
   createRazorpayPaymentOrder,
   verifyRazorpayPayment,
+  sendPaymentReminder,
 } from '../controllers/paymentController';
 
 const router = Router();
@@ -24,5 +25,6 @@ router.get('/transactions', getTransactions);
 router.get('/schedules/:memberId', getMemberSchedules);
 router.post('/razorpay/create-order', createRazorpayPaymentOrder);
 router.post('/razorpay/verify-payment', verifyRazorpayPayment);
+router.post('/send-reminder', sendPaymentReminder);
 
 export default router;

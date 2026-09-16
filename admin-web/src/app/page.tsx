@@ -70,9 +70,31 @@ interface AppSubscriptionPlan {
   tag?: string | null;
   description: string;
   durationMonths: number;
+  whatsappCredits: number;
   isFreeTrial: boolean;
   isActive: boolean;
   sortOrder: number;
+}
+
+interface SystemSettingsMap {
+  RAZORPAY_KEY_ID?: string;
+  RAZORPAY_KEY_SECRET?: string;
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+  WHATSAPP_BUSINESS_ACCOUNT_ID?: string;
+  WHATSAPP_ACCESS_TOKEN?: string;
+  WHATSAPP_API_VERSION?: string;
+  WHATSAPP_WEBHOOK_SECRET?: string;
+}
+
+interface WhatsAppTemplateItem {
+  id: string;
+  templateId?: string;
+  name?: string;
+  templateType: string;
+  category?: string;
+  language: string;
+  messageText: string;
+  isActive: boolean;
 }
 
 export default function AdminDashboard() {
@@ -93,7 +115,7 @@ export default function AdminDashboard() {
   const [authOrg, setAuthOrg] = useState<{ id: string; name: string; type?: string } | null>(null);
 
   // Tab & Filter states
-  const [activeTab, setActiveTab] = useState<"members" | "plans" | "expenses" | "reports" | "custom_fields" | "app_subscription_plans" | "facilities">("members");
+  const [activeTab, setActiveTab] = useState<"members" | "plans" | "expenses" | "reports" | "custom_fields" | "app_subscription_plans" | "facilities" | "settings">("members");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PAID" | "UNPAID" | "FROZEN">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -121,9 +143,37 @@ export default function AdminDashboard() {
     tag: "",
     description: "",
     durationMonths: 1,
+    whatsappCredits: 100,
     isFreeTrial: false,
     isActive: true,
     sortOrder: 1,
+  });
+
+  // Settings state
+  const [platformSettings, setPlatformSettings] = useState<SystemSettingsMap>({
+    RAZORPAY_KEY_ID: "",
+    RAZORPAY_KEY_SECRET: "",
+    WHATSAPP_PHONE_NUMBER_ID: "",
+    WHATSAPP_BUSINESS_ACCOUNT_ID: "",
+    WHATSAPP_ACCESS_TOKEN: "",
+    WHATSAPP_API_VERSION: "v20.0",
+    WHATSAPP_WEBHOOK_SECRET: "",
+  });
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState("");
+
+  // WhatsApp Templates state
+  const [templates, setTemplates] = useState<WhatsAppTemplateItem[]>([]);
+  const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplateItem | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateForm, setTemplateForm] = useState({
+    name: "",
+    templateId: "",
+    templateType: "RENT_REMINDER",
+    category: "UTILITY",
+    language: "en",
+    messageText: "",
+    isActive: true,
   });
 
   // Add Member Modal state
@@ -160,6 +210,8 @@ export default function AdminDashboard() {
       fetchDashboardData(parsedOrg.id);
       fetchWhatsAppSettings(parsedOrg.id);
       fetchOrganizationsList();
+      fetchPlatformSettings();
+      fetchWhatsAppTemplates();
     }
   }, []);
 
@@ -344,6 +396,7 @@ export default function AdminDashboard() {
       tag: "",
       description: "",
       durationMonths: 1,
+      whatsappCredits: 100,
       isFreeTrial: false,
       isActive: true,
       sortOrder: appPlans.length + 1,
@@ -359,6 +412,7 @@ export default function AdminDashboard() {
       tag: plan.tag || "",
       description: plan.description,
       durationMonths: plan.durationMonths,
+      whatsappCredits: plan.whatsappCredits !== undefined ? plan.whatsappCredits : 100,
       isFreeTrial: plan.isFreeTrial,
       isActive: plan.isActive,
       sortOrder: plan.sortOrder,
@@ -416,6 +470,123 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       alert("Error deleting plan");
+    }
+  };
+
+  // Fetch System Settings (Platform Razorpay & Meta WhatsApp Cloud API)
+  const fetchPlatformSettings = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/settings`);
+      if (res.ok) {
+        const data = await res.json();
+        setPlatformSettings((prev) => ({ ...prev, ...(data.settings || {}) }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch platform settings:", err);
+    }
+  };
+
+  const handleSavePlatformSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsSaving(true);
+    setSettingsNotice("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: platformSettings }),
+      });
+      if (res.ok) {
+        setSettingsNotice("Platform settings saved successfully! Keys are now live.");
+        setTimeout(() => setSettingsNotice(""), 4000);
+      } else {
+        alert("Failed to save settings");
+      }
+    } catch (err) {
+      alert("Error saving settings");
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  // Fetch WhatsApp Templates
+  const fetchWhatsAppTemplates = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/settings/whatsapp-templates`);
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data.templates || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch templates:", err);
+    }
+  };
+
+  const handleOpenCreateTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({
+      name: "",
+      templateId: `rt_custom_${Date.now().toString().slice(-4)}`,
+      templateType: "RENT_REMINDER",
+      category: "UTILITY",
+      language: "en",
+      messageText: "Hello {{1}}, reminder that payment of ₹{{2}} is due. Pay via: {{3}}",
+      isActive: true,
+    });
+    setShowTemplateModal(true);
+  };
+
+  const handleOpenEditTemplate = (tpl: WhatsAppTemplateItem) => {
+    setEditingTemplate(tpl);
+    setTemplateForm({
+      name: tpl.name || "",
+      templateId: tpl.templateId || "",
+      templateType: tpl.templateType || "RENT_REMINDER",
+      category: tpl.category || "UTILITY",
+      language: tpl.language || "en",
+      messageText: tpl.messageText,
+      isActive: tpl.isActive,
+    });
+    setShowTemplateModal(true);
+  };
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const url = editingTemplate
+        ? `${API_BASE_URL}/settings/whatsapp-templates/${editingTemplate.id}`
+        : `${API_BASE_URL}/settings/whatsapp-templates`;
+      const method = editingTemplate ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(templateForm),
+      });
+
+      if (res.ok) {
+        setShowTemplateModal(false);
+        fetchWhatsAppTemplates();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to save template");
+      }
+    } catch (err) {
+      alert("Error saving template");
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this template?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/settings/whatsapp-templates/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchWhatsAppTemplates();
+      }
+    } catch (err) {
+      alert("Error deleting template");
     }
   };
 
@@ -847,7 +1018,19 @@ export default function AdminDashboard() {
               activeTab === "facilities" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "text-slate-400 hover:text-white"
             }`}
           >
-            <ShieldCheck className="w-4 h-4" /> Registered Facilities ({allOrgs.length})
+            <ShieldCheck className="w-4 h-4" /> Facilities / Tenants ({allOrgs.length})
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("settings");
+              fetchPlatformSettings();
+              fetchWhatsAppTemplates();
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              activeTab === "settings" ? "bg-amber-500/20 text-amber-400 border border-amber-500/40" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Settings className="w-4 h-4" /> Platform & WhatsApp Settings
           </button>
         </div>
 
@@ -1083,6 +1266,10 @@ export default function AdminDashboard() {
                         {plan.price === 0 ? "Free" : `₹${plan.price}`}
                       </div>
                       <p className="text-xs text-slate-300 mt-1">{plan.description}</p>
+                      <div className="flex items-center gap-1.5 mt-2.5 text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-xl border border-emerald-500/20">
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{plan.whatsappCredits ?? 100} WhatsApp Credits</span>
+                      </div>
                     </div>
                   </div>
 
@@ -1129,7 +1316,7 @@ export default function AdminDashboard() {
               <div>
                 <h2 className="text-xl font-bold text-white tracking-wide">Registered Facility Admins & Businesses</h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  View all registered facility admins, their facility categories, owner details, and member counts from PostgreSQL.
+                  View all registered facility admins, their facility categories, payout setup, and WhatsApp credit status.
                 </p>
               </div>
               <button
@@ -1149,16 +1336,17 @@ export default function AdminDashboard() {
                       <th className="p-4">Category</th>
                       <th className="p-4">Admin / Owner</th>
                       <th className="p-4">Phone Number</th>
+                      <th className="p-4">Direct Payout (UPI / Bank)</th>
+                      <th className="p-4">WhatsApp Credits</th>
                       <th className="p-4">Members</th>
                       <th className="p-4">Plans</th>
-                      <th className="p-4">Registered Date</th>
                       <th className="p-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-sm">
                     {allOrgs.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-slate-500 text-xs">
+                        <td colSpan={9} className="p-8 text-center text-slate-500 text-xs">
                           No registered facilities found.
                         </td>
                       </tr>
@@ -1166,6 +1354,8 @@ export default function AdminDashboard() {
                       allOrgs.map((org) => {
                         const adminUser = org.users?.[0];
                         const isCurrentOrg = authOrg?.id === org.id;
+                        const subCredit = org.subscriptionCredit;
+                        const availableCredits = subCredit ? Math.max(0, subCredit.purchasedCredits - subCredit.usedCredits) : 0;
 
                         return (
                           <tr key={org.id} className="hover:bg-slate-900/40 transition-all">
@@ -1188,14 +1378,34 @@ export default function AdminDashboard() {
                             <td className="p-4 text-slate-400 text-xs font-mono">
                               {adminUser?.phone || "N/A"}
                             </td>
+                            <td className="p-4 text-xs">
+                              {org.bankUpiId ? (
+                                <div className="space-y-0.5">
+                                  <span className="text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 block w-max">
+                                    UPI: {org.bankUpiId}
+                                  </span>
+                                  {org.bankAccountName && (
+                                    <span className="text-[10px] text-slate-400 block">{org.bankAccountName}</span>
+                                  )}
+                                </div>
+                              ) : org.bankAccountNumber ? (
+                                <span className="text-slate-300 font-mono">
+                                  A/C: ****{org.bankAccountNumber.slice(-4)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 italic">Not configured</span>
+                              )}
+                            </td>
+                            <td className="p-4 text-xs">
+                              <span className="font-bold text-cyan-300 bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
+                                {availableCredits} credits
+                              </span>
+                            </td>
                             <td className="p-4 text-slate-300 font-bold">
                               {org._count?.members ?? 0}
                             </td>
                             <td className="p-4 text-slate-300">
                               {org._count?.plans ?? 0}
-                            </td>
-                            <td className="p-4 text-xs text-slate-400">
-                              {new Date(org.createdAt).toLocaleDateString()}
                             </td>
                             <td className="p-4 text-right">
                               <button
@@ -1216,6 +1426,271 @@ export default function AdminDashboard() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Settings & WhatsApp Templates Tab Content */}
+        {activeTab === "settings" && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-white tracking-wide flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-amber-400" /> Platform & WhatsApp Settings
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Configure live Razorpay gateway credentials, Meta Cloud API access tokens, and customize WhatsApp message templates with editable Meta Template IDs.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    fetchPlatformSettings();
+                    fetchWhatsAppTemplates();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Reload Settings
+                </button>
+              </div>
+            </div>
+
+            {settingsNotice && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center gap-2 animate-fade-in">
+                <CheckCircle className="w-4 h-4" />
+                <span>{settingsNotice}</span>
+              </div>
+            )}
+
+            {/* Credentials Forms Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Razorpay Platform Gateway Card */}
+              <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                      <IndianRupee className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Platform Razorpay Credentials</h3>
+                      <p className="text-[11px] text-slate-400">Used when Facility Admins purchase app subscriptions</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full">
+                    Platform Gateway
+                  </span>
+                </div>
+
+                <form onSubmit={handleSavePlatformSettings} className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Razorpay Key ID</label>
+                    <input
+                      type="text"
+                      value={platformSettings.RAZORPAY_KEY_ID || ""}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, RAZORPAY_KEY_ID: e.target.value })}
+                      placeholder="rzp_live_... or rzp_test_..."
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Razorpay Key Secret</label>
+                    <input
+                      type="password"
+                      value={platformSettings.RAZORPAY_KEY_SECRET || ""}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, RAZORPAY_KEY_SECRET: e.target.value })}
+                      placeholder="••••••••••••••••••••••••"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={settingsSaving}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 transition-all shadow-md shadow-blue-600/20"
+                    >
+                      <Save className="w-3.5 h-3.5" /> Save Razorpay Keys
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Meta WhatsApp Cloud API Card */}
+              <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Meta WhatsApp Cloud API</h3>
+                      <p className="text-[11px] text-slate-400">Official Meta Graph API configuration for messaging</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    Cloud API
+                  </span>
+                </div>
+
+                <form onSubmit={handleSavePlatformSettings} className="space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-slate-300 block mb-1">Phone Number ID</label>
+                      <input
+                        type="text"
+                        value={platformSettings.WHATSAPP_PHONE_NUMBER_ID || ""}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, WHATSAPP_PHONE_NUMBER_ID: e.target.value })}
+                        placeholder="e.g. 1092837465"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-slate-300 block mb-1">WABA Account ID</label>
+                      <input
+                        type="text"
+                        value={platformSettings.WHATSAPP_BUSINESS_ACCOUNT_ID || ""}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, WHATSAPP_BUSINESS_ACCOUNT_ID: e.target.value })}
+                        placeholder="e.g. 9876543210"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Permanent System User Access Token</label>
+                    <input
+                      type="password"
+                      value={platformSettings.WHATSAPP_ACCESS_TOKEN || ""}
+                      onChange={(e) => setPlatformSettings({ ...platformSettings, WHATSAPP_ACCESS_TOKEN: e.target.value })}
+                      placeholder="EAAG... (System User Token)"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-slate-300 block mb-1">Graph API Version</label>
+                      <input
+                        type="text"
+                        value={platformSettings.WHATSAPP_API_VERSION || "v20.0"}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, WHATSAPP_API_VERSION: e.target.value })}
+                        placeholder="v20.0"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-slate-300 block mb-1">Webhook Verify Token</label>
+                      <input
+                        type="text"
+                        value={platformSettings.WHATSAPP_WEBHOOK_SECRET || ""}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, WHATSAPP_WEBHOOK_SECRET: e.target.value })}
+                        placeholder="webhook_secret"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={settingsSaving}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 transition-all shadow-md shadow-emerald-600/20"
+                    >
+                      <Save className="w-3.5 h-3.5" /> Save WhatsApp Cloud API Settings
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {/* WhatsApp Templates Manager */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-cyan-400" /> WhatsApp Message Templates ({templates.length})
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Pre-seeded Meta approved templates. You can edit the Meta Template ID, Category, and text directly in this panel.
+                  </p>
+                </div>
+                <button
+                  onClick={handleOpenCreateTemplate}
+                  className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md shadow-cyan-500/20"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add New Template
+                </button>
+              </div>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-300 text-xs flex items-start gap-2.5">
+                <span className="text-base">💡</span>
+                <p>
+                  <strong>Meta Template IDs:</strong> Currently pre-seeded with default IDs (<code className="bg-amber-950/40 px-1 py-0.5 rounded text-amber-200">rt_otp_v1</code>, <code className="bg-amber-950/40 px-1 py-0.5 rounded text-amber-200">rt_rent_reminder_v1</code>, etc.). When Meta approves your actual templates in WhatsApp Business Manager, click <strong>Edit</strong> on any template below to plug in your approved Meta Template ID without any code changes!
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {templates.map((tpl) => (
+                  <div
+                    key={tpl.id}
+                    className="glass-card p-5 rounded-2xl border border-slate-800 hover:border-slate-700 bg-slate-900/40 flex flex-col justify-between transition-all space-y-3"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <h4 className="font-bold text-white text-sm">{tpl.name || tpl.templateType}</h4>
+                          <span className="font-mono text-[11px] text-cyan-400 block mt-0.5">
+                            ID: {tpl.templateId || "None"}
+                          </span>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            tpl.category === "AUTHENTICATION"
+                              ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                              : tpl.category === "MARKETING"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                          }`}
+                        >
+                          {tpl.category || "UTILITY"}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-300 font-mono leading-relaxed break-words">
+                        {tpl.messageText}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                        <span>Language: <strong className="text-white uppercase">{tpl.language}</strong></span>
+                        <span>•</span>
+                        <span>Type: <strong className="text-slate-300">{tpl.templateType}</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-800/60">
+                      <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> Ready in Browser
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditTemplate(tpl)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 transition-all"
+                        >
+                          <Edit3 className="w-3 h-3 text-cyan-400" /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTemplate(tpl.id)}
+                          className="p-1 rounded-lg bg-slate-800 hover:bg-rose-900/40 text-rose-400 transition-all"
+                          title="Delete Template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -1309,6 +1784,20 @@ export default function AdminDashboard() {
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">WhatsApp Credits (Compulsory) *</label>
+                <input
+                  type="number"
+                  value={appPlanForm.whatsappCredits}
+                  onChange={(e) => setAppPlanForm({ ...appPlanForm, whatsappCredits: parseInt(e.target.value) || 0 })}
+                  placeholder="100"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  min={0}
+                  required
+                />
+                <span className="text-[11px] text-slate-500 block mt-1">Compulsory message credits automatically added to Tenant's balance on subscribing.</span>
               </div>
 
               <div className="flex items-center gap-4 pt-2">
@@ -1583,6 +2072,131 @@ export default function AdminDashboard() {
                   className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-5 py-2 rounded-xl font-bold transition-all shadow-lg shadow-cyan-500/25 flex items-center gap-2"
                 >
                   {addMemberLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Save Member
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Template Create / Edit Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="glass-panel w-full max-w-lg p-6 rounded-3xl border border-slate-800 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-cyan-400" />
+                {editingTemplate ? "Edit WhatsApp Template" : "Add WhatsApp Template"}
+              </h3>
+              <button
+                onClick={() => setShowTemplateModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTemplate} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Display Name *</label>
+                  <input
+                    type="text"
+                    value={templateForm.name}
+                    onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+                    placeholder="e.g. Rent Due Reminder"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Meta Template ID *</label>
+                  <input
+                    type="text"
+                    value={templateForm.templateId}
+                    onChange={(e) => setTemplateForm({ ...templateForm, templateId: e.target.value })}
+                    placeholder="e.g. rt_rent_reminder_v1"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Category</label>
+                  <select
+                    value={templateForm.category}
+                    onChange={(e) => setTemplateForm({ ...templateForm, category: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="UTILITY">UTILITY</option>
+                    <option value="AUTHENTICATION">AUTHENTICATION</option>
+                    <option value="MARKETING">MARKETING</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Template Type</label>
+                  <select
+                    value={templateForm.templateType}
+                    onChange={(e) => setTemplateForm({ ...templateForm, templateType: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="RENT_REMINDER">RENT_REMINDER</option>
+                    <option value="OTP">OTP</option>
+                    <option value="PAYMENT_RECEIPT">PAYMENT_RECEIPT</option>
+                    <option value="MEMBER_WELCOME">MEMBER_WELCOME</option>
+                    <option value="RENEWAL_REMINDER">RENEWAL_REMINDER</option>
+                    <option value="MONTH_FREEZE">MONTH_FREEZE</option>
+                    <option value="CUSTOM">CUSTOM</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Language</label>
+                  <input
+                    type="text"
+                    value={templateForm.language}
+                    onChange={(e) => setTemplateForm({ ...templateForm, language: e.target.value })}
+                    placeholder="en, ml"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white uppercase focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-300 block mb-1">Message Content / Format *</label>
+                <textarea
+                  value={templateForm.messageText}
+                  onChange={(e) => setTemplateForm({ ...templateForm, messageText: e.target.value })}
+                  placeholder="e.g. Hello {{1}}, your rent of ₹{{2}} is due on {{4}}. Pay directly via: {{5}}"
+                  rows={4}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-cyan-500 resize-none leading-relaxed"
+                  required
+                />
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <span className="font-bold text-slate-300 block">Parameter Placeholders Guide:</span>
+                <p>• <code className="text-cyan-400">{"{{1}}"}</code>: Customer / Member Name</p>
+                <p>• <code className="text-cyan-400">{"{{2}}"}</code>: Amount (or OTP verification code)</p>
+                <p>• <code className="text-cyan-400">{"{{3}}"}</code>: Month / Period (or OTP validity duration)</p>
+                <p>• <code className="text-cyan-400">{"{{4}}"}</code>: Due Date / Receipt ID</p>
+                <p>• <code className="text-cyan-400">{"{{5}}"}</code>: Direct Tenant Payout Link (UPI Deep Link or Razorpay)</p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowTemplateModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-5 py-2 rounded-xl font-bold transition-all shadow-lg shadow-cyan-500/20"
+                >
+                  Save Template
                 </button>
               </div>
             </form>

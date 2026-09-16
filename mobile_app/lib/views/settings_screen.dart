@@ -14,10 +14,17 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
   List<dynamic> _templates = [];
   List<dynamic> _customFields = [];
 
+  // Tenant Bank & Payout details
+  final _upiController = TextEditingController();
+  final _accNumberController = TextEditingController();
+  final _ifscController = TextEditingController();
+  final _accNameController = TextEditingController();
+  bool _savingPayout = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadSettingsData();
   }
 
@@ -34,6 +41,34 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     } catch (e) {
       debugPrint('Error loading settings: $e');
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _savePayoutDetails() async {
+    setState(() => _savingPayout = true);
+    final success = await ApiService.updateTenantPayout({
+      'bankUpiId': _upiController.text.trim(),
+      'bankAccountNumber': _accNumberController.text.trim(),
+      'bankIfsc': _ifscController.text.trim().toUpperCase(),
+      'bankAccountName': _accNameController.text.trim(),
+    });
+    setState(() => _savingPayout = false);
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payout & UPI details saved! Customer payments will route directly to your account.'),
+            backgroundColor: Color(0xFF059669),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to save payout details'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 
@@ -221,6 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
           tabs: const [
             Tab(icon: Icon(Icons.chat_bubble_outline_rounded), text: 'WhatsApp'),
             Tab(icon: Icon(Icons.tune_rounded), text: 'Custom Fields'),
+            Tab(icon: Icon(Icons.account_balance_rounded), text: 'Payout & Bank'),
             Tab(icon: Icon(Icons.workspace_premium_rounded), text: 'Subscription'),
           ],
         ),
@@ -392,9 +428,125 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                   ),
               ],
             ),
+          // 3. Bank & Payout Settings View (Direct Customer Payments)
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_rounded, color: primaryGreen, size: 28),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Direct Customer Payouts',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Rent reminders sent on WhatsApp will automatically embed this UPI ID so customer payments credit directly to your account.',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF15803D)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                const Text('UPI ID (Recommended for Instant Direct Payment)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _upiController,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. yourname@okaxis, gym@okhdfcbank',
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: const Icon(Icons.qr_code_rounded, color: primaryGreen),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                const Text('Account Holder Name', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _accNameController,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. FitZone Health Club',
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: const Icon(Icons.business_rounded, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                const Text('Bank Account Number', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _accNumberController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 50100234567890',
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: const Icon(Icons.account_balance_rounded, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                const Text('Bank IFSC Code', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _ifscController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. HDFC0001234',
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: const Icon(Icons.pin_rounded, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    onPressed: _savingPayout ? null : _savePayoutDetails,
+                    child: _savingPayout
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            'Save Payout Details',
+                            style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
 
-          // 3. Subscription & Credit Store View
+          // 4. Subscription & Credit Store View
           SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(

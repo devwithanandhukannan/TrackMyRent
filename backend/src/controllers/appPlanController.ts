@@ -21,10 +21,14 @@ export const getAppPlans = async (req: Request, res: Response) => {
 
 export const createAppPlan = async (req: Request, res: Response) => {
   try {
-    const { name, price, tag, description, durationMonths, isFreeTrial, isActive, sortOrder } = req.body;
+    const { name, price, tag, description, durationMonths, whatsappCredits, isFreeTrial, isActive, sortOrder } = req.body;
 
     if (!name || price === undefined) {
       return res.status(400).json({ success: false, error: 'Name and price are required' });
+    }
+
+    if (whatsappCredits === undefined || whatsappCredits === null || isNaN(Number(whatsappCredits))) {
+      return res.status(400).json({ success: false, error: 'WhatsApp Credits is compulsory for all subscription plans' });
     }
 
     const plan = await prisma.appSubscriptionPlan.create({
@@ -34,6 +38,7 @@ export const createAppPlan = async (req: Request, res: Response) => {
         tag: tag || null,
         description: description || '',
         durationMonths: Number(durationMonths) || 1,
+        whatsappCredits: Math.max(0, parseInt(String(whatsappCredits), 10)),
         isFreeTrial: Boolean(isFreeTrial),
         isActive: isActive !== undefined ? Boolean(isActive) : true,
         sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
@@ -49,7 +54,7 @@ export const createAppPlan = async (req: Request, res: Response) => {
 export const updateAppPlan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, price, tag, description, durationMonths, isFreeTrial, isActive, sortOrder } = req.body;
+    const { name, price, tag, description, durationMonths, whatsappCredits, isFreeTrial, isActive, sortOrder } = req.body;
 
     const plan = await prisma.appSubscriptionPlan.update({
       where: { id },
@@ -59,6 +64,7 @@ export const updateAppPlan = async (req: Request, res: Response) => {
         ...(tag !== undefined && { tag: tag || null }),
         ...(description !== undefined && { description }),
         ...(durationMonths !== undefined && { durationMonths: Number(durationMonths) }),
+        ...(whatsappCredits !== undefined && { whatsappCredits: Math.max(0, parseInt(String(whatsappCredits), 10)) }),
         ...(isFreeTrial !== undefined && { isFreeTrial: Boolean(isFreeTrial) }),
         ...(isActive !== undefined && { isActive: Boolean(isActive) }),
         ...(sortOrder !== undefined && { sortOrder: Number(sortOrder) }),
