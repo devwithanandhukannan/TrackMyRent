@@ -428,6 +428,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                   ),
               ],
             ),
+          ),
+
           // 3. Bank & Payout Settings View (Direct Customer Payments)
           SingleChildScrollView(
             padding: const EdgeInsets.all(20.0),
