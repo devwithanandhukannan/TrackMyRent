@@ -1315,7 +1315,7 @@ export default function AdminDashboard() {
                       onChange={(e) =>
                         setSystemSettings({ ...systemSettings, RAZORPAY_KEY_ID: e.target.value })
                       }
-                      placeholder="rzp_live_..."
+                      placeholder="Enter Razorpay Key ID"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
                     />
                   </div>
@@ -1331,7 +1331,7 @@ export default function AdminDashboard() {
                         onChange={(e) =>
                           setSystemSettings({ ...systemSettings, RAZORPAY_KEY_SECRET: e.target.value })
                         }
-                        placeholder="••••••••••••••••"
+                        placeholder="Enter Razorpay Key Secret"
                         className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
                       />
                       <button
@@ -1382,7 +1382,7 @@ export default function AdminDashboard() {
                           WHATSAPP_PHONE_NUMBER_ID: e.target.value,
                         })
                       }
-                      placeholder="e.g. 104829104810291"
+                      placeholder="Enter WhatsApp Phone Number ID"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
                     />
                   </div>
@@ -1400,7 +1400,7 @@ export default function AdminDashboard() {
                           WHATSAPP_BUSINESS_ACCOUNT_ID: e.target.value,
                         })
                       }
-                      placeholder="e.g. 29482019482019"
+                      placeholder="Enter WhatsApp Business Account ID"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
                     />
                   </div>
@@ -1419,7 +1419,7 @@ export default function AdminDashboard() {
                             WHATSAPP_ACCESS_TOKEN: e.target.value,
                           })
                         }
-                        placeholder="EAAG..."
+                        placeholder="Paste Permanent System User Access Token"
                         className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
                       />
                       <button
@@ -1508,8 +1508,8 @@ export default function AdminDashboard() {
                               handleUpdateTemplateId(tpl.id, e.target.value);
                             }
                           }}
-                          className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
-                          placeholder="e.g. rt_rent_reminder_v1"
+                          className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                          placeholder="Enter Meta Template ID"
                         />
                       </div>
                     </div>

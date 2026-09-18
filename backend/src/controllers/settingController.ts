@@ -2,13 +2,13 @@ import { Request, Response } from 'express';
 import { prisma } from '../index';
 
 const DEFAULT_SETTINGS = [
-  { key: 'RAZORPAY_KEY_ID', value: 'rzp_test_placeholder_key', category: 'RAZORPAY', description: 'Platform Razorpay Key ID for subscription payments' },
-  { key: 'RAZORPAY_KEY_SECRET', value: 'rzp_test_placeholder_secret', category: 'RAZORPAY', description: 'Platform Razorpay Key Secret' },
-  { key: 'WHATSAPP_PHONE_NUMBER_ID', value: 'dummy_phone_number_id', category: 'WHATSAPP', description: 'Meta Cloud API WhatsApp Phone Number ID' },
-  { key: 'WHATSAPP_BUSINESS_ACCOUNT_ID', value: 'dummy_waba_account_id', category: 'WHATSAPP', description: 'Meta WhatsApp Business Account ID (WABA ID)' },
-  { key: 'WHATSAPP_ACCESS_TOKEN', value: 'dummy_meta_system_user_token', category: 'WHATSAPP', description: 'Meta Permanent System User Access Token' },
+  { key: 'RAZORPAY_KEY_ID', value: '', category: 'RAZORPAY', description: 'Platform Razorpay Key ID for subscription payments' },
+  { key: 'RAZORPAY_KEY_SECRET', value: '', category: 'RAZORPAY', description: 'Platform Razorpay Key Secret' },
+  { key: 'WHATSAPP_PHONE_NUMBER_ID', value: '', category: 'WHATSAPP', description: 'Meta Cloud API WhatsApp Phone Number ID' },
+  { key: 'WHATSAPP_BUSINESS_ACCOUNT_ID', value: '', category: 'WHATSAPP', description: 'Meta WhatsApp Business Account ID (WABA ID)' },
+  { key: 'WHATSAPP_ACCESS_TOKEN', value: '', category: 'WHATSAPP', description: 'Meta Permanent System User Access Token' },
   { key: 'WHATSAPP_API_VERSION', value: 'v20.0', category: 'WHATSAPP', description: 'Graph API Version (e.g. v20.0)' },
-  { key: 'WHATSAPP_WEBHOOK_SECRET', value: 'dummy_webhook_verify_secret', category: 'WHATSAPP', description: 'Webhook Verification Token for receiving events' },
+  { key: 'WHATSAPP_WEBHOOK_SECRET', value: '', category: 'WHATSAPP', description: 'Webhook Verification Token for receiving events' },
 ];
 
 export const getSettings = async (req: Request, res: Response) => {

@@ -3,7 +3,7 @@ import { prisma } from '../index';
 
 export const SEEDED_DEFAULT_TEMPLATES = [
   {
-    templateId: 'rt_otp_v1',
+    templateId: '',
     name: 'Admin Login OTP',
     templateType: 'OTP',
     category: 'AUTHENTICATION',
@@ -11,7 +11,7 @@ export const SEEDED_DEFAULT_TEMPLATES = [
     messageText: 'Your RentTrack verification code is {{1}}. This code is valid for {{2}} minutes. Please do not share this OTP with anyone. - RentTrack Secure Login',
   },
   {
-    templateId: 'rt_rent_reminder_v1',
+    templateId: '',
     name: 'Rent / Fee Due Reminder',
     templateType: 'RENT_REMINDER',
     category: 'UTILITY',
@@ -19,7 +19,7 @@ export const SEEDED_DEFAULT_TEMPLATES = [
     messageText: 'Hello {{1}}, your rent/fee payment of ₹{{2}} for {{3}} is scheduled for {{4}}. You can pay directly to our account via: {{5}} . Thank you!',
   },
   {
-    templateId: 'rt_payment_receipt_v1',
+    templateId: '',
     name: 'Payment Receipt & Confirmation',
     templateType: 'PAYMENT_RECEIPT',
     category: 'UTILITY',
@@ -27,7 +27,7 @@ export const SEEDED_DEFAULT_TEMPLATES = [
     messageText: 'Dear {{1}}, we have received your payment of ₹{{2}} for {{3}}. Receipt No: {{4}}. Download official receipt here: {{5}}',
   },
   {
-    templateId: 'rt_welcome_v1',
+    templateId: '',
     name: 'New Member Welcome',
     templateType: 'MEMBER_WELCOME',
     category: 'MARKETING',
@@ -35,7 +35,7 @@ export const SEEDED_DEFAULT_TEMPLATES = [
     messageText: 'Welcome {{1}} to {{2}}! Your membership plan \'{{3}}\' is active. We are thrilled to have you onboard.',
   },
   {
-    templateId: 'rt_renewal_reminder_v1',
+    templateId: '',
     name: 'Plan Renewal Reminder',
     templateType: 'RENEWAL_REMINDER',
     category: 'UTILITY',
@@ -43,7 +43,7 @@ export const SEEDED_DEFAULT_TEMPLATES = [
     messageText: 'Hi {{1}}, your membership plan \'{{2}}\' will expire on {{3}}. Please renew in advance to continue enjoying uninterrupted services.',
   },
   {
-    templateId: 'rt_month_freeze_v1',
+    templateId: '',
     name: 'Month / Account Freeze Notice',
     templateType: 'MONTH_FREEZE',
     category: 'UTILITY',
