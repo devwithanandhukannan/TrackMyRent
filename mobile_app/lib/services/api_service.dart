@@ -439,15 +439,73 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  static Future<List<dynamic>> fetchAppPlans() async {
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http
+            .get(Uri.parse('$host/app-plans'))
+            .timeout(const Duration(seconds: 3));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          final data = jsonDecode(response.body);
+          return data['data'] ?? [];
+        }
+      } catch (_) {}
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> fetchSubscriptionCredits() async {
+    final orgId = await getOrgId();
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http
+            .get(Uri.parse('$host/credits/$orgId'))
+            .timeout(const Duration(seconds: 3));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return jsonDecode(response.body);
+        }
+      } catch (_) {}
+    }
+    return {};
+  }
+
+  static Future<Map<String, dynamic>?> purchaseCredits(int creditsCount) async {
+    final orgId = await getOrgId();
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.post(
+          Uri.parse('$host/credits/purchase'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'organizationId': orgId,
+            'creditsCount': creditsCount,
+          }),
+        ).timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return jsonDecode(response.body);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> subscribeAppPlan(String appPlanId) async {
     final orgId = await getOrgId();
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/organization/$orgId/subscribe-app-plan'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'appPlanId': appPlanId}),
-    );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.post(
+          Uri.parse('$host/auth/organization/$orgId/subscribe-app-plan'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'appPlanId': appPlanId}),
+        ).timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return jsonDecode(response.body);
+        }
+      } catch (_) {}
     }
     return null;
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../utils/colors.dart';
 import '../main.dart';
@@ -12,162 +13,245 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Admin Phone OTP & Registration State
-  final TextEditingController _adminPhoneController = TextEditingController(text: '9876543210');
-  final TextEditingController _adminOtpController = TextEditingController(text: '00000');
-  final TextEditingController _adminOrgNameController = TextEditingController();
-  final TextEditingController _adminOwnerNameController = TextEditingController();
-  String _selectedOrgType = 'GYM';
+  // Mode: 0 = Register New Facility, 1 = Existing Tenant Sign In
+  int _tabMode = 0;
 
-  bool _otpSent = false;
-  bool _isNewUser = false;
+  // Controllers for Basic Tenant Details
+  final TextEditingController _ownerNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _orgNameController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController(text: '00000');
+
+  String _selectedOrgType = 'GYM';
   bool _isLoading = false;
   String _errorMessage = '';
+  String _successMessage = '';
 
   final List<Map<String, String>> _orgTypes = [
-    {'label': 'Gym & Fitness', 'value': 'GYM'},
-    {'label': 'Hostel & PG', 'value': 'HOSTEL'},
-    {'label': 'Tuition Centre', 'value': 'TUITION_CENTER'},
-    {'label': 'Rental Building', 'value': 'RENTAL'},
-    {'label': 'Academy', 'value': 'ACADEMY'},
+    {'label': 'Gym & Fitness Center', 'value': 'GYM'},
+    {'label': 'Hostel & PG Living', 'value': 'HOSTEL'},
+    {'label': 'Tuition & Coaching Centre', 'value': 'TUITION_CENTER'},
+    {'label': 'Rental Building / Property', 'value': 'RENTAL'},
+    {'label': 'Academy & Sports Club', 'value': 'ACADEMY'},
   ];
 
-  void _quickDemoLogin() async {
-    final phone = _adminPhoneController.text.trim().isNotEmpty
-        ? _adminPhoneController.text.trim()
-        : '9876543210';
+  @override
+  void initState() {
+    super.initState();
+    _phoneController.addListener(() {
+      setState(() {});
+    });
+  }
 
+  @override
+  void dispose() {
+    _ownerNameController.dispose();
+    _phoneController.dispose();
+    _orgNameController.dispose();
+    _otpController.dispose();
+    super.dispose();
+  }
+
+  // ─── Verification & Submission ─────────────────────────────────────────────
+
+  Future<void> _handleTenantSubmit() async {
     setState(() {
-      _isLoading = true;
       _errorMessage = '';
-      _adminOtpController.text = '00000';
+      _successMessage = '';
     });
 
-    try {
-      final res = await ApiService.verifyOtp(
-        phone: phone,
-        otp: '00000',
-        orgName: _adminOrgNameController.text.trim().isNotEmpty
-            ? _adminOrgNameController.text.trim()
-            : 'Demo Facility',
-        adminName: _adminOwnerNameController.text.trim().isNotEmpty
-            ? _adminOwnerNameController.text.trim()
-            : 'Facility Admin',
-        orgType: _selectedOrgType,
-      );
+    final phone = _phoneController.text.trim();
+    final otp = _otpController.text.trim().isEmpty ? '00000' : _otpController.text.trim();
+    final name = _ownerNameController.text.trim();
+    final orgName = _orgNameController.text.trim();
 
-      if (res['token'] != null) {
-        await ApiService.saveSession(
-          token: res['token'],
-          role: res['user']?['role'] ?? 'ORG_ADMIN',
-          orgId: res['organization']?['id'],
-          orgName: res['organization']?['name'],
-          userName: res['user']?['name'],
-          phone: res['user']?['phone'] ?? phone,
-        );
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
-          );
-        }
-      } else {
-        setState(() => _errorMessage = res['error'] ?? 'Demo login failed');
+    // 1. Mandatory 10-digit Phone Validation
+    if (phone.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your 10-digit mobile number.');
+      return;
+    }
+    if (phone.length != 10) {
+      setState(() => _errorMessage = 'Mobile number must be exactly 10 digits (currently ${phone.length}/10).');
+      return;
+    }
+
+    // 2. Mandatory Basic Details Check for Registration
+    if (_tabMode == 0) {
+      if (name.isEmpty) {
+        setState(() => _errorMessage = 'Please enter your Full Name.');
+        return;
       }
-    } catch (e) {
-      setState(() => _errorMessage = 'Could not complete demo login');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _handleSendAdminOtp() async {
-    final phone = _adminPhoneController.text.trim();
-    if (phone.length < 10) {
-      setState(() => _errorMessage = 'Please enter a valid 10-digit mobile number');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
-
-    try {
-      final res = await ApiService.sendOtp(phone);
-      setState(() {
-        _otpSent = true;
-        _isNewUser = res['isNewUser'] ?? false;
-        _adminOtpController.text = res['otp'] ?? '00000';
-        if (res['existingUser'] != null) {
-          _adminOwnerNameController.text = res['existingUser']['name'] ?? '';
-          _adminOrgNameController.text = res['existingUser']['orgName'] ?? '';
-        }
-      });
-    } catch (e) {
-      // Never block - fallback to demo OTP 00000
-      setState(() {
-        _otpSent = true;
-        _adminOtpController.text = '00000';
-      });
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _handleVerifyAdminOtp() async {
-    final phone = _adminPhoneController.text.trim();
-    final otp = _adminOtpController.text.trim();
-
-    if (otp.isEmpty) {
-      setState(() => _errorMessage = 'Please enter OTP code (Demo OTP: 00000)');
-      return;
-    }
-
-    final isDemoOtp = otp == '00000' || otp == '0000' || otp == '000000' || otp == '123456';
-
-    if (_isNewUser && !isDemoOtp) {
-      if (_adminOrgNameController.text.trim().isEmpty || _adminOwnerNameController.text.trim().isEmpty) {
-        setState(() => _errorMessage = 'Please provide Facility Name and Owner Name to register');
+      if (orgName.isEmpty) {
+        setState(() => _errorMessage = 'Please enter your Organisation / Facility Name.');
         return;
       }
     }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+    setState(() => _isLoading = true);
 
     try {
       final res = await ApiService.verifyOtp(
         phone: phone,
         otp: otp,
-        orgName: _adminOrgNameController.text.trim().isNotEmpty ? _adminOrgNameController.text.trim() : 'Demo Facility',
-        adminName: _adminOwnerNameController.text.trim().isNotEmpty ? _adminOwnerNameController.text.trim() : 'Admin',
+        adminName: name.isNotEmpty ? name : null,
+        orgName: orgName.isNotEmpty ? orgName : null,
         orgType: _selectedOrgType,
       );
 
       if (res['token'] != null) {
+        final finalOrgName = res['organization']?['name'] ?? orgName;
+        final finalUserName = res['user']?['name'] ?? name;
+
+        // Verify that the user actually has basic details registered
+        if ((finalOrgName == null || finalOrgName.toString().trim().isEmpty) ||
+            (finalUserName == null || finalUserName.toString().trim().isEmpty)) {
+          setState(() {
+            _tabMode = 0; // Switch to register tab
+            _errorMessage = 'Basic details missing. Please enter your Name and Organisation Name.';
+          });
+          return;
+        }
+
         await ApiService.saveSession(
           token: res['token'],
           role: res['user']?['role'] ?? 'ORG_ADMIN',
           orgId: res['organization']?['id'],
-          orgName: res['organization']?['name'],
-          userName: res['user']?['name'],
-          phone: res['user']?['phone'],
+          orgName: finalOrgName,
+          userName: finalUserName,
+          phone: res['user']?['phone'] ?? phone,
         );
+
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
           );
         }
       } else {
-        setState(() => _errorMessage = res['error'] ?? 'Verification failed');
+        final err = res['error'] ?? 'Authentication failed';
+        if (err.toLowerCase().contains('name') || err.toLowerCase().contains('basic')) {
+          setState(() {
+            _tabMode = 0; // Switch to registration tab so user can complete basic details
+            _errorMessage = err;
+          });
+        } else {
+          setState(() => _errorMessage = err);
+        }
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Could not complete login/registration');
+      setState(() => _errorMessage = 'Could not connect to server. Please check your network.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ─── 10-Column Phone Number Display Widget ──────────────────────────────────
+  Widget _build10ColumnPhoneIndicator(String phone) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              '10-Digit Mobile Number (India)',
+              style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: phone.length == 10
+                    ? const Color(0xFF059669).withValues(alpha: 0.2)
+                    : Colors.white10,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: phone.length == 10 ? const Color(0xFF059669) : Colors.transparent,
+                ),
+              ),
+              child: Text(
+                '${phone.length} / 10 Digits',
+                style: TextStyle(
+                  color: phone.length == 10 ? const Color(0xFF10B981) : AppColors.slate400,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Text Field with +91 prefix
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          maxLength: 10,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(10),
+          ],
+          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+          decoration: InputDecoration(
+            counterText: '',
+            hintText: 'Enter 10-digit number',
+            hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 14, letterSpacing: 0),
+            prefixIcon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              child: const Text(
+                '+91',
+                style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+            ),
+            filled: true,
+            fillColor: AppColors.background,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // Visual 10 Columns Row (Directly implements "phonenumber show the 10 col")
+        Row(
+          children: List.generate(10, (index) {
+            final hasDigit = index < phone.length;
+            final digitChar = hasDigit ? phone[index] : '';
+            final isCurrent = index == phone.length;
+
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(right: index < 9 ? 4.0 : 0.0),
+                height: 38,
+                decoration: BoxDecoration(
+                  color: hasDigit
+                      ? const Color(0xFF059669).withValues(alpha: 0.25)
+                      : (isCurrent ? Colors.white12 : AppColors.background),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: hasDigit
+                        ? const Color(0xFF10B981)
+                        : (isCurrent ? const Color(0xFF38BDF8) : Colors.white10),
+                    width: hasDigit || isCurrent ? 1.5 : 1.0,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  hasDigit ? digitChar : '${index + 1}',
+                  style: TextStyle(
+                    color: hasDigit
+                        ? Colors.white
+                        : (isCurrent ? const Color(0xFF38BDF8) : Colors.white24),
+                    fontSize: hasDigit ? 15 : 10,
+                    fontWeight: hasDigit ? FontWeight.w900 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
   }
 
   @override
@@ -177,7 +261,7 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -185,44 +269,148 @@ class _LoginScreenState extends State<LoginScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(24),
+                    color: const Color(0xFF059669),
+                    borderRadius: BorderRadius.circular(22),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.4),
+                        color: const Color(0xFF059669).withValues(alpha: 0.4),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.trending_up_rounded, size: 40, color: Colors.white),
+                  child: const Icon(Icons.apartment_rounded, size: 38, color: Colors.white),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 const Text(
                   'RentTrack',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Gym, Academy, PG & Tenant Management',
+                  'Facility Management & Rental Payment System',
                   style: TextStyle(fontSize: 12, color: AppColors.slate400),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
+                // Error Message Alert
                 if (_errorMessage.isNotEmpty) ...[
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.2),
+                      color: Colors.redAccent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
                     ),
-                    child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // Facility Admin Phone OTP & Registration Card
+                // Success Message Alert
+                if (_successMessage.isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF059669).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _successMessage,
+                            style: const TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // Segmented Tabs: Register vs Sign In
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() {
+                            _tabMode = 0;
+                            _errorMessage = '';
+                          }),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _tabMode == 0 ? const Color(0xFF059669) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Register Facility',
+                              style: TextStyle(
+                                color: _tabMode == 0 ? Colors.white : AppColors.slate400,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() {
+                            _tabMode = 1;
+                            _errorMessage = '';
+                          }),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _tabMode == 1 ? const Color(0xFF059669) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Sign In',
+                              style: TextStyle(
+                                color: _tabMode == 1 ? Colors.white : AppColors.slate400,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Main Form Card
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -233,225 +421,164 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'FACILITY ADMIN LOGIN',
-                        style: TextStyle(
-                          color: AppColors.primary,
+                      // Header Text
+                      Text(
+                        _tabMode == 0 ? 'TENANT FACILITY REGISTRATION' : 'TENANT SIGN IN',
+                        style: const TextStyle(
+                          color: Color(0xFF10B981),
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1.1,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Enter your mobile number to sign in or register your business.',
-                        style: TextStyle(color: AppColors.slate400, fontSize: 12),
+                      Text(
+                        _tabMode == 0
+                            ? 'Register your basic details (Name, 10-digit Phone, Organisation Name) to manage your services.'
+                            : 'Enter your registered 10-digit phone number to sign in to your facility.',
+                        style: const TextStyle(color: AppColors.slate400, fontSize: 12),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
 
-                      const Text('Admin Mobile Number', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: _adminPhoneController,
-                        enabled: !_otpSent,
-                        keyboardType: TextInputType.phone,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Enter 10-digit mobile number',
-                          hintStyle: const TextStyle(color: AppColors.slate500),
-                          prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.slate400),
-                          suffixIcon: _otpSent
-                              ? TextButton(
-                                  onPressed: () => setState(() {
-                                    _otpSent = false;
-                                    _isNewUser = false;
-                                  }),
-                                  child: const Text('Change', style: TextStyle(color: AppColors.primary, fontSize: 12)),
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: AppColors.background,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      if (_otpSent) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('OTP Code', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                              child: const Text('Demo OTP: 00000', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
+                      // Field 1: Name (Required in Registration Mode)
+                      if (_tabMode == 0) ...[
+                        const Text('Owner / Admin Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 6),
                         TextField(
-                          controller: _adminOtpController,
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 4, fontWeight: FontWeight.bold),
+                          controller: _ownerNameController,
+                          style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.lock_clock_rounded, color: AppColors.slate400),
+                            hintText: 'e.g., Anandhu Kannan',
+                            hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
+                            prefixIcon: const Icon(Icons.person_rounded, color: AppColors.slate400),
                             filled: true,
                             fillColor: AppColors.background,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Field 2: 10-Column Phone Number
+                      _build10ColumnPhoneIndicator(_phoneController.text),
+                      const SizedBox(height: 16),
+
+                      // Field 3: Organisation Name (Required in Registration Mode)
+                      if (_tabMode == 0) ...[
+                        const Text('Organisation / Facility Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _orgNameController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'e.g., Phoenix Fitness Center',
+                            hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
+                            prefixIcon: const Icon(Icons.business_rounded, color: AppColors.slate400),
+                            filled: true,
+                            fillColor: AppColors.background,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
 
-                        if (_isNewUser) ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blueAccent.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
-                            ),
-                            child: const Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('First-Time Facility Registration', style: TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-                                SizedBox(height: 2),
-                                Text('Please provide your facility and owner details to get started.', style: TextStyle(color: AppColors.slate400, fontSize: 11)),
-                              ],
-                            ),
+                        // Field 4: Facility Category
+                        const Text('Facility Category', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(height: 14),
-                          const Text('Facility / Business Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          TextField(
-                            controller: _adminOrgNameController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'e.g., Apex Gym & Fitness',
-                              hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
-                              prefixIcon: const Icon(Icons.business_rounded, color: AppColors.slate400),
-                              filled: true,
-                              fillColor: AppColors.background,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedOrgType,
+                              isExpanded: true,
+                              dropdownColor: AppColors.surface,
+                              style: const TextStyle(color: Colors.white, fontSize: 14),
+                              items: _orgTypes.map((type) {
+                                return DropdownMenuItem<String>(
+                                  value: type['value'],
+                                  child: Text(type['label']!),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) setState(() => _selectedOrgType = val);
+                              },
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text('Owner / Admin Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          TextField(
-                            controller: _adminOwnerNameController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'e.g., Alex Johnson',
-                              hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
-                              prefixIcon: const Icon(Icons.person_rounded, color: AppColors.slate400),
-                              filled: true,
-                              fillColor: AppColors.background,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text('Facility Category', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.background,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedOrgType,
-                                isExpanded: true,
-                                dropdownColor: AppColors.surface,
-                                style: const TextStyle(color: Colors.white, fontSize: 14),
-                                items: _orgTypes.map((type) {
-                                  return DropdownMenuItem<String>(
-                                    value: type['value'],
-                                    child: Text(type['label']!),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  if (val != null) setState(() => _selectedOrgType = val);
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: _isLoading ? null : _handleVerifyAdminOtp,
-                            child: _isLoading
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : Text(
-                                    _isNewUser ? 'Complete Registration & Login' : 'Verify OTP & Login',
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF38BDF8),
-                              side: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            icon: const Icon(Icons.flash_on_rounded, size: 18),
-                            label: const Text(
-                              'Instant Demo Login (00000)',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            onPressed: _isLoading ? null : _quickDemoLogin,
-                          ),
-                        ),
-                      ] else ...[
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: _isLoading ? null : _handleSendAdminOtp,
-                            child: _isLoading
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Text('Send OTP Code', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF38BDF8),
-                              side: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            icon: const Icon(Icons.flash_on_rounded, size: 18),
-                            label: const Text(
-                              'Instant Demo Login (OTP: 00000)',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            onPressed: _isLoading ? null : _quickDemoLogin,
-                          ),
-                        ),
+                        const SizedBox(height: 16),
                       ],
+
+                      // Field 5: OTP Code (Default 00000)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Verification OTP *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF059669).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('Default OTP: 00000', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _otpController,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 4, fontWeight: FontWeight.bold),
+                        decoration: InputDecoration(
+                          counterText: '',
+                          prefixIcon: const Icon(Icons.lock_clock_rounded, color: AppColors.slate400),
+                          filled: true,
+                          fillColor: AppColors.background,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Submit Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          onPressed: _isLoading ? null : _handleTenantSubmit,
+                          child: _isLoading
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Text(
+                                  _tabMode == 0 ? 'Register Facility & Enter App' : 'Verify & Sign In',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+
+                // Link to Onboarding Guide
                 TextButton(
                   onPressed: () {
                     Navigator.of(context).push(
@@ -459,8 +586,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     );
                   },
                   child: const Text(
-                    'View App Features & Setup Guide →',
-                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13),
+                    'View Setup Guide & WhatsApp Features →',
+                    style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                 ),
               ],
@@ -471,5 +598,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
-

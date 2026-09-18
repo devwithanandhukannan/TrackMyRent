@@ -14,6 +14,11 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
   List<dynamic> _templates = [];
   List<dynamic> _customFields = [];
 
+  // Subscription & credits from Admin
+  Map<String, dynamic>? _subscriptionData;
+  List<dynamic> _appPlans = [];
+  bool _actionLoading = false;
+
   // Tenant Bank & Payout details
   final _upiController = TextEditingController();
   final _accNumberController = TextEditingController();
@@ -33,14 +38,82 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     try {
       final templatesData = await ApiService.fetchWhatsAppTemplates();
       final fieldsData = await ApiService.fetchCustomFields();
+      final subData = await ApiService.fetchSubscriptionCredits();
+      final plansData = await ApiService.fetchAppPlans();
       setState(() {
         _templates = templatesData;
         _customFields = fieldsData;
+        _subscriptionData = subData;
+        _appPlans = plansData;
         _isLoading = false;
       });
     } catch (e) {
       debugPrint('Error loading settings: $e');
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _subscribeToPlan(dynamic plan) async {
+    setState(() => _actionLoading = true);
+    final planId = plan['id']?.toString() ?? '';
+    final planName = plan['name'] ?? 'Plan';
+    final credits = plan['whatsappCredits'] ?? 0;
+
+    final res = await ApiService.subscribeAppPlan(planId);
+    if (res != null && res['success'] == true) {
+      final subData = await ApiService.fetchSubscriptionCredits();
+      if (mounted) {
+        setState(() {
+          _subscriptionData = subData;
+          _actionLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully subscribed to $planName! $credits WhatsApp credits added.'),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res?['error'] ?? 'Failed to subscribe to plan'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _buyCredits(int count, String price) async {
+    setState(() => _actionLoading = true);
+    final res = await ApiService.purchaseCredits(count);
+    if (res != null) {
+      final subData = await ApiService.fetchSubscriptionCredits();
+      if (mounted) {
+        setState(() {
+          _subscriptionData = subData;
+          _actionLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$count WhatsApp credits added to your account!'),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to purchase credits. Please try again.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 
@@ -548,7 +621,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             ),
           ),
 
-          // 4. Subscription & Credit Store View
+          // 4. Subscription & Credit Store View (Dynamic from Admin)
           SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -564,42 +637,236 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF059669).withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  child: const Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Current Subscription', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      SizedBox(height: 4),
-                      Text('RentalBuddy Premium', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 4),
-                      Text('30-Day Free Trial • 500 WhatsApp Credits Remaining', style: TextStyle(color: Color(0xE6FFFFFF), fontSize: 13)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'CURRENT SUBSCRIPTION',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.check_circle_rounded, size: 14, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text('ACTIVE', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _subscriptionData?['subscription']?['subscriptionName'] ?? 'Free trial 30 days',
+                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.chat_bubble_rounded, size: 16, color: Color(0xE6FFFFFF)),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${_subscriptionData?['credits']?['availableCredits'] ?? 100} WhatsApp Credits Remaining',
+                            style: const TextStyle(color: Color(0xE6FFFFFF), fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
 
                 const SizedBox(height: 24),
-                const Text('Available App Plans', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Available App Plans', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A))),
+                    if (_actionLoading)
+                      const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF059669))),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text('Plans created and managed by Platform Admin with WhatsApp credits.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
                 const SizedBox(height: 12),
 
-                _buildPlanCard('Basic Plan', '₹299 / month', '1 Month validity • Normal Plan • Buy credits separately'),
-                _buildPlanCard('Plus Plan', '₹599 / month', '1 Month validity • Includes 100 Free WhatsApp Credits'),
-                _buildPlanCard('Max Plan', '₹999 / 3 months', '3 Months validity • Includes 300 Free WhatsApp Credits'),
+                if (_appPlans.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: const Column(
+                      children: [
+                        Icon(Icons.layers_clear_rounded, size: 36, color: Color(0xFF94A3B8)),
+                        SizedBox(height: 8),
+                        Text('No Subscription Plans Found', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        SizedBox(height: 4),
+                        Text('Platform Admin has not configured any plans yet.', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                      ],
+                    ),
+                  )
+                else
+                  ..._appPlans.map((plan) {
+                    final planName = plan['name'] ?? 'Plan';
+                    final num price = plan['price'] ?? 0;
+                    final int months = plan['durationMonths'] ?? 1;
+                    final int credits = plan['whatsappCredits'] ?? 100;
+                    final String? tag = plan['tag'];
+                    final String desc = plan['description'] ?? '';
+                    final currentSubName = _subscriptionData?['subscription']?['subscriptionName'] ?? '';
+                    final isCurrentPlan = currentSubName == planName;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isCurrentPlan ? const Color(0xFF059669) : const Color(0xFFE2E8F0),
+                          width: isCurrentPlan ? 1.8 : 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    planName,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A)),
+                                  ),
+                                  if (tag != null && tag.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE0E7FF),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        tag.toUpperCase(),
+                                        style: const TextStyle(color: Color(0xFF4338CA), fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              Text(
+                                price == 0 ? '₹0' : '₹$price',
+                                style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF059669), fontSize: 18),
+                              ),
+                            ],
+                          ),
+                          if (desc.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                          ],
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFA7F3D0)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.auto_awesome, size: 14, color: Color(0xFF059669)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$credits WhatsApp Credits Included',
+                                  style: const TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '$months Month${months > 1 ? 's' : ''} Validity',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                              ),
+                              if (isCurrentPlan)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFECFDF5),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFF059669)),
+                                  ),
+                                  child: const Text('Active Plan', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.bold, fontSize: 12)),
+                                )
+                              else
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF059669),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: _actionLoading ? null : () => _subscribeToPlan(plan),
+                                  child: const Text('Activate', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
 
                 const SizedBox(height: 24),
-                const Text('Buy Extra WhatsApp Credits', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const Text('Buy Extra WhatsApp Credits', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A))),
                 const SizedBox(height: 4),
-                const Text('Purchased credits NEVER expire.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                const Text('Purchased credits NEVER expire and add immediately to your facility.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
                 const SizedBox(height: 12),
 
                 Row(
                   children: [
-                    Expanded(child: _buildCreditTopupCard('100 Credits', '₹99')),
+                    Expanded(child: _buildCreditTopupCard('100 Credits', '₹99', 100)),
                     const SizedBox(width: 8),
-                    Expanded(child: _buildCreditTopupCard('500 Credits', '₹399')),
+                    Expanded(child: _buildCreditTopupCard('500 Credits', '₹399', 500)),
                     const SizedBox(width: 8),
-                    Expanded(child: _buildCreditTopupCard('1000 Credits', '₹699')),
+                    Expanded(child: _buildCreditTopupCard('1000 Credits', '₹699', 1000)),
                   ],
                 ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -608,33 +875,24 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildPlanCard(String title, String price, String subtitle) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      child: ListTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-        trailing: Text(price, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF059669), fontSize: 16)),
-      ),
-    );
-  }
-
-  Widget _buildCreditTopupCard(String title, String price) {
+  Widget _buildCreditTopupCard(String title, String price, int creditsCount) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
           const SizedBox(height: 4),
           Text(price, style: const TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
@@ -643,13 +901,11 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
               backgroundColor: const Color(0xFF059669),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               minimumSize: const Size(double.infinity, 32),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
             ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Top-up $title for $price initiated')),
-              );
-            },
-            child: const Text('Buy', style: TextStyle(color: Colors.white, fontSize: 12)),
+            onPressed: _actionLoading ? null : () => _buyCredits(creditsCount, price),
+            child: const Text('Buy', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

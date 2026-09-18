@@ -268,6 +268,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
     }
 
     const cleanedPhone = String(phone).replace(/[^0-9]/g, '');
+    if (cleanedPhone.length < 10) {
+      return res.status(400).json({ error: 'Please enter a valid 10-digit mobile number' });
+    }
 
     let user = await prisma.user.findFirst({
       where: { phone: { contains: cleanedPhone } },
@@ -275,8 +278,14 @@ export const verifyOtp = async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      const finalOrgName = orgName && String(orgName).trim() ? String(orgName).trim() : 'RentTrack Facility';
-      const finalAdminName = adminName && String(adminName).trim() ? String(adminName).trim() : 'Admin';
+      if (!adminName || !String(adminName).trim() || !orgName || !String(orgName).trim()) {
+        return res.status(400).json({
+          error: 'Basic details required: Name and Organisation Name must be provided before login.',
+        });
+      }
+
+      const finalOrgName = String(orgName).trim();
+      const finalAdminName = String(adminName).trim();
       const generatedEmail = email && String(email).trim()
         ? String(email).trim().toLowerCase()
         : `admin_${cleanedPhone || Date.now()}@renttrack.app`;
@@ -300,7 +309,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
           subscriptionCredit: {
             create: {
               planType: 'CREDIT',
-              subscriptionName: 'Plus Trial',
+              subscriptionName: 'Free trial 30 days',
               expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
               purchasedCredits: 100,
             },
@@ -314,6 +323,13 @@ export const verifyOtp = async (req: Request, res: Response) => {
         include: { organization: true },
       });
     } else {
+      const hasMissingDetails = !user.name || user.name.trim() === '' || !user.organization?.name || user.organization.name.trim() === '';
+      if (hasMissingDetails && (!adminName || !String(adminName).trim() || !orgName || !String(orgName).trim())) {
+        return res.status(400).json({
+          error: 'Basic details required: Please provide your Name and Organisation Name.',
+        });
+      }
+
       // If user exists and new orgName/adminName are supplied, update details
       if (adminName || orgName) {
         if (adminName && adminName.trim()) {

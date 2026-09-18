@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../main.dart';
 import '../services/api_service.dart';
 
@@ -104,23 +102,15 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
   Future<void> _fetchAppPlans() async {
     setState(() => _isLoading = true);
     try {
-      // Try fetching from local backend
-      final response = await http
-          .get(Uri.parse('http://localhost:5001/api/app-plans'))
-          .timeout(const Duration(seconds: 3));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final List<dynamic> list = data['data'] ?? [];
-        if (list.isNotEmpty) {
-          final fetched = list.map((item) => AppPlanItem.fromJson(item)).toList();
-          setState(() {
-            _plans = fetched;
-            _selectedPlanId = fetched.first.id;
-            _isLoading = false;
-          });
-          return;
-        }
+      final list = await ApiService.fetchAppPlans();
+      if (list.isNotEmpty) {
+        final fetched = list.map((item) => AppPlanItem.fromJson(item)).toList();
+        setState(() {
+          _plans = fetched;
+          _selectedPlanId = fetched.first.id;
+          _isLoading = false;
+        });
+        return;
       }
     } catch (e) {
       // Ignore error and use default fallback list
