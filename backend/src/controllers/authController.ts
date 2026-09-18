@@ -367,18 +367,31 @@ export const verifyOtp = async (req: Request, res: Response) => {
  */
 export const getAllOrganizations = async (req: Request, res: Response) => {
   try {
-    const orgs = await prisma.organization.findMany({
-      include: {
-        users: { select: { id: true, name: true, email: true, phone: true, role: true } },
-        subscriptionCredit: true,
-        _count: {
-          select: { members: true, plans: true },
+    const [orgs, appPlans] = await Promise.all([
+      prisma.organization.findMany({
+        include: {
+          users: { select: { id: true, name: true, email: true, phone: true, role: true } },
+          subscriptionCredit: true,
+          _count: {
+            select: { members: true, plans: true },
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.appSubscriptionPlan.findMany(),
+    ]);
+
+    const planMap = new Map(appPlans.map((p) => [p.id, p]));
+
+    const enrichedOrgs = orgs.map((org) => {
+      const activePlan = org.selectedAppPlanId ? planMap.get(org.selectedAppPlanId) : null;
+      return {
+        ...org,
+        selectedAppPlan: activePlan || null,
+      };
     });
 
-    res.status(200).json({ organizations: orgs });
+    res.status(200).json({ organizations: enrichedOrgs });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }

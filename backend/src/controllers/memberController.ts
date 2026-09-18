@@ -114,6 +114,7 @@ export const listMembers = async (req: Request, res: Response) => {
     const members = await prisma.member.findMany({
       where,
       include: {
+        organization: true,
         plan: true,
         group: true,
         paymentSchedules: {
@@ -130,6 +131,9 @@ export const listMembers = async (req: Request, res: Response) => {
 
       return {
         id: m.id,
+        organizationId: m.organizationId,
+        organizationName: m.organization?.name || 'Unknown Facility',
+        organizationType: m.organization?.type || 'FACILITY',
         fullName: m.fullName,
         phone: m.phone,
         joiningDate: m.joiningDate,
@@ -138,6 +142,7 @@ export const listMembers = async (req: Request, res: Response) => {
         groupName: m.group?.name || 'Direct',
         status: memberStatus,
         amount: latestSchedule ? latestSchedule.amount : (m.plan?.price || 0),
+        dueDate: latestSchedule?.dueDate || null,
         latestMonthYear: latestSchedule?.monthYear || 'N/A',
         customFields: m.customFieldsData,
       };
