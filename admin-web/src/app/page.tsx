@@ -36,7 +36,9 @@ import {
   Zap,
   HelpCircle,
   Coins,
-  Tag
+  Tag,
+  Receipt,
+  TrendingUp
 } from "lucide-react";
 
 const API_BASE_URL = "http://localhost:5001/api";
@@ -130,9 +132,41 @@ interface SystemSettingsMap {
   WHATSAPP_WEBHOOK_SECRET?: string;
 }
 
+interface TenantBillingItem {
+  id: string;
+  name: string;
+  type: string;
+  adminName: string;
+  adminEmail: string;
+  adminPhone: string;
+  planName: string;
+  planPrice: number;
+  isFreeTrial: boolean;
+  durationMonths: number;
+  expiresAt: string;
+  daysRemaining: number;
+  validityStatus: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED";
+  purchasedCredits: number;
+  usedCredits: number;
+  availableCredits: number;
+  subscriptionPaid: number;
+  creditsPaid: number;
+  totalPaid: number;
+  membersCount: number;
+  createdAt?: string;
+}
+
+interface TenantBillingStats {
+  totalPlatformRevenue: number;
+  activeSubscriptionsCount: number;
+  totalCreditsPurchased: number;
+  expiringSoonCount: number;
+  totalTenants: number;
+}
+
 export default function AdminDashboard() {
-  // Sidebar active tab: "users" | "tenants" | "plans" | "settings"
-  const [activeTab, setActiveTab] = useState<"users" | "tenants" | "plans" | "settings">("users");
+  // Sidebar active tab: "users" | "tenants" | "plans" | "payments" | "settings"
+  const [activeTab, setActiveTab] = useState<"users" | "tenants" | "plans" | "payments" | "settings">("users");
 
   // Data states
   const [members, setMembers] = useState<Member[]>([]);
@@ -141,6 +175,14 @@ export default function AdminDashboard() {
   const [creditPackages, setCreditPackages] = useState<AppCreditPackage[]>([]);
   const [templates, setTemplates] = useState<WhatsAppTemplateItem[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettingsMap>({});
+  const [tenantBilling, setTenantBilling] = useState<TenantBillingItem[]>([]);
+  const [tenantBillingStats, setTenantBillingStats] = useState<TenantBillingStats>({
+    totalPlatformRevenue: 0,
+    activeSubscriptionsCount: 0,
+    totalCreditsPurchased: 0,
+    expiringSoonCount: 0,
+    totalTenants: 0,
+  });
 
   // Loading & notification states
   const [loading, setLoading] = useState<boolean>(true);
@@ -156,6 +198,18 @@ export default function AdminDashboard() {
 
   // Search for Tenants Tab
   const [tenantSearch, setTenantSearch] = useState<string>("");
+
+  // Search & Filters for Tenant Payments Tab
+  const [billingSearch, setBillingSearch] = useState<string>("");
+  const [billingStatusFilter, setBillingStatusFilter] = useState<"ALL" | "ACTIVE" | "EXPIRING_SOON" | "EXPIRED">("ALL");
+  const [billingPlanTypeFilter, setBillingPlanTypeFilter] = useState<"ALL" | "PAID" | "TRIAL">("ALL");
+
+  // Subscription adjustment modal state
+  const [adjustModalTenant, setAdjustModalTenant] = useState<TenantBillingItem | null>(null);
+  const [adjustExtendDays, setAdjustExtendDays] = useState<number>(30);
+  const [adjustAddCredits, setAdjustAddCredits] = useState<number>(100);
+  const [adjustPlanName, setAdjustPlanName] = useState<string>("");
+  const [savingAdjustment, setSavingAdjustment] = useState<boolean>(false);
 
   // Modals
   const [selectedMemberModal, setSelectedMemberModal] = useState<Member | null>(null);
@@ -215,13 +269,14 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [membersRes, orgsRes, plansRes, creditPackagesRes, templatesRes, settingsRes] = await Promise.all([
+      const [membersRes, orgsRes, plansRes, creditPackagesRes, templatesRes, settingsRes, billingRes] = await Promise.all([
         fetch(`${API_BASE_URL}/members`),
         fetch(`${API_BASE_URL}/auth/organizations`),
         fetch(`${API_BASE_URL}/app-plans`),
         fetch(`${API_BASE_URL}/credit-packages?includeDisabled=true`),
         fetch(`${API_BASE_URL}/settings/whatsapp-templates`),
         fetch(`${API_BASE_URL}/settings`),
+        fetch(`${API_BASE_URL}/reports/tenant-billing`),
       ]);
 
       if (membersRes.ok) {
@@ -248,11 +303,49 @@ export default function AdminDashboard() {
         const data = await settingsRes.json();
         setSystemSettings(data.settings || {});
       }
+      if (billingRes.ok) {
+        const data = await billingRes.json();
+        setTenantBilling(data.tenants || []);
+        if (data.stats) {
+          setTenantBillingStats(data.stats);
+        }
+      }
     } catch (err) {
       console.error("Failed to load platform data:", err);
       showToast("Error connecting to backend API", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Adjust Tenant Subscription Validity & Bonus Credits
+  const handleAdjustTenantSubscription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustModalTenant) return;
+    setSavingAdjustment(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/reports/tenant-billing/adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: adjustModalTenant.id,
+          extendDays: Number(adjustExtendDays),
+          addCredits: Number(adjustAddCredits),
+          planName: adjustPlanName.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`Subscription updated for ${adjustModalTenant.name}!`);
+        setAdjustModalTenant(null);
+        fetchData();
+      } else {
+        showToast(data.error || "Failed to adjust subscription", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to contact backend", "error");
+    } finally {
+      setSavingAdjustment(false);
     }
   };
 
@@ -699,7 +792,38 @@ export default function AdminDashboard() {
               </span>
             </button>
 
-            {/* OPTION 3: Subscription Plans Store */}
+            {/* OPTION 3: Tenant Payments & Subscriptions */}
+            <button
+              onClick={() => setActiveTab("payments")}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-left transition-all duration-150 ${
+                activeTab === "payments"
+                  ? "bg-blue-50 text-blue-700 font-semibold shadow-xs border border-blue-100"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    activeTab === "payments"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  <Receipt className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-sm">Tenant Payments</div>
+                  <div className="text-[11px] text-slate-400 font-normal">
+                    Subscription validity & credits
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
+                ₹{tenantBillingStats.totalPlatformRevenue.toLocaleString("en-IN")}
+              </span>
+            </button>
+
+            {/* OPTION 4: Subscription Plans Store */}
             <button
               onClick={() => setActiveTab("plans")}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-left transition-all duration-150 ${
@@ -730,7 +854,7 @@ export default function AdminDashboard() {
               </span>
             </button>
 
-            {/* OPTION 4: Platform & WhatsApp Settings */}
+            {/* OPTION 5: Platform & WhatsApp Settings */}
             <button
               onClick={() => setActiveTab("settings")}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-left transition-all duration-150 ${
@@ -785,6 +909,7 @@ export default function AdminDashboard() {
             <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
               {activeTab === "users" && "End Users & Payment Schedules"}
               {activeTab === "tenants" && "Tenants (Facilities) & Direct Payouts"}
+              {activeTab === "payments" && "Tenant Payments & Subscription Validity"}
               {activeTab === "plans" && "Subscription Plans Store"}
               {activeTab === "settings" && "Platform & Meta WhatsApp Settings"}
             </h2>
@@ -793,6 +918,8 @@ export default function AdminDashboard() {
                 "Track all end-user customers across tenants, their active plans, and days left to pay."}
               {activeTab === "tenants" &&
                 "Manage all registered facility tenants, direct payout accounts, and active subscriptions."}
+              {activeTab === "payments" &&
+                "Track tenant paid fees, active plan validity, WhatsApp credit top-ups, and manage subscription extensions."}
               {activeTab === "plans" &&
                 "Configure and manage subscription packages for facility tenants with compulsory WhatsApp credits."}
               {activeTab === "settings" &&
@@ -1628,6 +1755,387 @@ export default function AdminDashboard() {
         )}
 
         {/* ────────────────────────────────────────────────────────────────────────
+            TAB 3: TENANT PAYMENTS & SUBSCRIPTION VALIDITY
+        ──────────────────────────────────────────────────────────────────────── */}
+        {activeTab === "payments" && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Top 4 Bento KPI Metric Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: Total Platform Revenue */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Total Revenue Collected
+                  </p>
+                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                    ₹{tenantBillingStats.totalPlatformRevenue.toLocaleString("en-IN")}
+                  </h3>
+                  <div className="flex items-center gap-1.5 mt-2 text-xs font-medium text-emerald-600">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    <span>From subscriptions & credits</span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <IndianRupee className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Card 2: Active Subscriptions */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Active Subscriptions
+                  </p>
+                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                    {tenantBillingStats.activeSubscriptionsCount}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Across {tenantBillingStats.totalTenants} registered facilities
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Card 3: Expiring Soon (Action Needed) */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Expiring in ≤ 5 Days
+                  </p>
+                  <h3 className={`text-2xl font-extrabold mt-1 ${tenantBillingStats.expiringSoonCount > 0 ? "text-amber-600" : "text-slate-900"}`}>
+                    {tenantBillingStats.expiringSoonCount}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {tenantBillingStats.expiringSoonCount > 0 ? "Requires renewal reminder" : "All tenants in good standing"}
+                  </p>
+                </div>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold ${
+                  tenantBillingStats.expiringSoonCount > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"
+                }`}>
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Card 4: WhatsApp Credits Purchased */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    WhatsApp Credits Issued
+                  </p>
+                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                    {tenantBillingStats.totalCreditsPurchased.toLocaleString("en-IN")}
+                  </h3>
+                  <p className="text-xs text-purple-600 font-medium mt-2">
+                    {tenantBilling.reduce((acc, t) => acc + t.usedCredits, 0).toLocaleString("en-IN")} credits delivered
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                  <Coins className="w-6 h-6" />
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Search Bar */}
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search tenant name, admin contact, phone or plan..."
+                  value={billingSearch}
+                  onChange={(e) => setBillingSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Status & Plan Type Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium">
+                  <button
+                    onClick={() => setBillingStatusFilter("ALL")}
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      billingStatusFilter === "ALL" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Status
+                  </button>
+                  <button
+                    onClick={() => setBillingStatusFilter("ACTIVE")}
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      billingStatusFilter === "ACTIVE" ? "bg-white text-emerald-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Active
+                  </button>
+                  <button
+                    onClick={() => setBillingStatusFilter("EXPIRING_SOON")}
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      billingStatusFilter === "EXPIRING_SOON" ? "bg-white text-amber-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Expiring Soon
+                  </button>
+                  <button
+                    onClick={() => setBillingStatusFilter("EXPIRED")}
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      billingStatusFilter === "EXPIRED" ? "bg-white text-rose-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Expired
+                  </button>
+                </div>
+
+                <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium">
+                  <button
+                    onClick={() => setBillingPlanTypeFilter("ALL")}
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      billingPlanTypeFilter === "ALL" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Plans
+                  </button>
+                  <button
+                    onClick={() => setBillingPlanTypeFilter("PAID")}
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      billingPlanTypeFilter === "PAID" ? "bg-white text-blue-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Paid
+                  </button>
+                  <button
+                    onClick={() => setBillingPlanTypeFilter("TRIAL")}
+                    className={`px-3 py-1.5 rounded-lg transition ${
+                      billingPlanTypeFilter === "TRIAL" ? "bg-white text-purple-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Free Trial
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Tenant Payments & Validity Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Tenant Subscription & Billing Records</h3>
+                  <p className="text-xs text-slate-500">
+                    Live financial ledger tracking plan fees, WhatsApp credits, and subscription lifecycle.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg">
+                  {tenantBilling.filter((tenant) => {
+                    const matchesSearch =
+                      tenant.name.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                      tenant.adminName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                      tenant.adminPhone.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                      tenant.adminEmail.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                      tenant.planName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                      tenant.type.toLowerCase().includes(billingSearch.toLowerCase());
+                    const matchesStatus =
+                      billingStatusFilter === "ALL" || tenant.validityStatus === billingStatusFilter;
+                    const matchesPlanType =
+                      billingPlanTypeFilter === "ALL" ||
+                      (billingPlanTypeFilter === "PAID" && !tenant.isFreeTrial) ||
+                      (billingPlanTypeFilter === "TRIAL" && tenant.isFreeTrial);
+                    return matchesSearch && matchesStatus && matchesPlanType;
+                  }).length}{" "}
+                  Tenants Listed
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-3.5">Tenant Facility</th>
+                      <th className="px-4 py-3.5">Admin Contact</th>
+                      <th className="px-4 py-3.5">Active Plan</th>
+                      <th className="px-4 py-3.5">Subscription Validity</th>
+                      <th className="px-4 py-3.5">WhatsApp Credits</th>
+                      <th className="px-4 py-3.5">Total Paid</th>
+                      <th className="px-6 py-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                    {tenantBilling
+                      .filter((tenant) => {
+                        const matchesSearch =
+                          tenant.name.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                          tenant.adminName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                          tenant.adminPhone.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                          tenant.adminEmail.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                          tenant.planName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                          tenant.type.toLowerCase().includes(billingSearch.toLowerCase());
+                        const matchesStatus =
+                          billingStatusFilter === "ALL" || tenant.validityStatus === billingStatusFilter;
+                        const matchesPlanType =
+                          billingPlanTypeFilter === "ALL" ||
+                          (billingPlanTypeFilter === "PAID" && !tenant.isFreeTrial) ||
+                          (billingPlanTypeFilter === "TRIAL" && tenant.isFreeTrial);
+                        return matchesSearch && matchesStatus && matchesPlanType;
+                      })
+                      .map((tenant) => {
+                        const usagePercent = tenant.purchasedCredits > 0
+                          ? Math.min(100, Math.round((tenant.usedCredits / tenant.purchasedCredits) * 100))
+                          : 0;
+
+                        return (
+                          <tr key={tenant.id} className="hover:bg-slate-50/70 transition-colors">
+                            {/* Tenant Facility */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 font-bold flex items-center justify-center flex-shrink-0">
+                                  <Building className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                                    {tenant.name}
+                                    <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                      {tenant.type}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                    {tenant.membersCount} active customer{tenant.membersCount === 1 ? "" : "s"} enrolled
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Admin Contact */}
+                            <td className="px-4 py-4">
+                              <div className="font-semibold text-slate-800">{tenant.adminName}</div>
+                              <div className="flex items-center gap-1.5 text-slate-500 mt-0.5">
+                                <Phone className="w-3 h-3 text-slate-400" />
+                                <span className="font-mono">{tenant.adminPhone}</span>
+                                {tenant.adminPhone && tenant.adminPhone !== "-" && (
+                                  <a
+                                    href={`https://wa.me/${tenant.adminPhone.replace(/\D/g, "")}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    title="Message Admin on WhatsApp"
+                                    className="text-emerald-600 hover:text-emerald-700 ml-1"
+                                  >
+                                    <Send className="w-3 h-3" />
+                                  </a>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate max-w-[150px]">
+                                {tenant.adminEmail}
+                              </div>
+                            </td>
+
+                            {/* Active Plan */}
+                            <td className="px-4 py-4">
+                              <div className="font-bold text-slate-900">{tenant.planName}</div>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                {tenant.isFreeTrial ? (
+                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                    Free Trial
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                    Paid Plan (₹{tenant.planPrice})
+                                  </span>
+                                )}
+                                <span className="text-[11px] text-slate-400 font-medium">
+                                  {tenant.durationMonths}mo
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Subscription Validity */}
+                            <td className="px-4 py-4">
+                              <div className="text-xs font-semibold text-slate-800">
+                                {new Date(tenant.expiresAt).toLocaleDateString("en-IN", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                              </div>
+                              <div className="mt-1.5">
+                                {tenant.validityStatus === "ACTIVE" && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <Clock className="w-3 h-3 text-emerald-600" />
+                                    {tenant.daysRemaining} days left
+                                  </span>
+                                )}
+                                {tenant.validityStatus === "EXPIRING_SOON" && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                                    {tenant.daysRemaining} days left
+                                  </span>
+                                )}
+                                {tenant.validityStatus === "EXPIRED" && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                    <AlertCircle className="w-3 h-3 text-rose-600" />
+                                    Expired
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* WhatsApp Credits */}
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-extrabold text-slate-900 text-sm">
+                                  {tenant.availableCredits}
+                                </span>
+                                <span className="text-slate-400 text-xs">
+                                  / {tenant.purchasedCredits} total
+                                </span>
+                              </div>
+                              <div className="w-32 bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                                <div
+                                  className="bg-purple-600 h-1.5 rounded-full transition-all"
+                                  style={{ width: `${usagePercent}%` }}
+                                ></div>
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-1">
+                                {tenant.usedCredits} credits consumed ({usagePercent}%)
+                              </div>
+                            </td>
+
+                            {/* Total Paid & Breakdown */}
+                            <td className="px-4 py-4">
+                              <div className="font-extrabold text-slate-900 text-base">
+                                ₹{tenant.totalPaid.toLocaleString("en-IN")}
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5 space-y-0.5">
+                                <div>Sub: <span className="font-semibold text-slate-700">₹{tenant.subscriptionPaid.toLocaleString()}</span></div>
+                                <div>Credits: <span className="font-semibold text-slate-700">₹{tenant.creditsPaid.toLocaleString()}</span></div>
+                              </div>
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                onClick={() => {
+                                  setAdjustModalTenant(tenant);
+                                  setAdjustExtendDays(30);
+                                  setAdjustAddCredits(100);
+                                  setAdjustPlanName(tenant.planName);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-xl text-xs transition border border-blue-200/60 shadow-xs"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>Adjust / Extend</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ────────────────────────────────────────────────────────────────────────
             TAB 4: PLATFORM & WHATSAPP SETTINGS
         ──────────────────────────────────────────────────────────────────────── */}
         {activeTab === "settings" && (
@@ -2312,6 +2820,177 @@ export default function AdminDashboard() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────────────────────────
+          MODAL: Adjust Tenant Subscription Validity & Bonus Credits
+      ────────────────────────────────────────────────────────────────────────── */}
+      {adjustModalTenant && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Adjust Tenant Subscription</h3>
+                  <p className="text-xs text-slate-500">{adjustModalTenant.name} ({adjustModalTenant.type})</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAdjustModalTenant(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Current Snapshot Card */}
+            <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-medium">Current Plan:</span>
+                <span className="font-bold text-slate-900">
+                  {adjustModalTenant.planName} {adjustModalTenant.isFreeTrial && "(Free Trial)"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-medium">Current Expiry:</span>
+                <span className="font-bold text-slate-900">
+                  {new Date(adjustModalTenant.expiresAt).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}{" "}
+                  ({adjustModalTenant.daysRemaining} days remaining)
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-medium">WhatsApp Credits:</span>
+                <span className="font-bold text-purple-700">
+                  {adjustModalTenant.availableCredits} available / {adjustModalTenant.purchasedCredits} total
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleAdjustTenantSubscription} className="space-y-4">
+              {/* Extend Validity Days */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Extend Subscription Validity (Days)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={adjustExtendDays}
+                    onChange={(e) => setAdjustExtendDays(Number(e.target.value))}
+                    placeholder="e.g. 30"
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-xs text-slate-500 font-medium">days</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {[7, 15, 30, 60, 90, 365].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setAdjustExtendDays(d)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition ${
+                        adjustExtendDays === d
+                          ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      +{d}d
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Adds days to existing expiry date, or from today if currently expired.
+                </p>
+              </div>
+
+              {/* Add Bonus WhatsApp Credits */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Grant Bonus WhatsApp Credits
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={adjustAddCredits}
+                    onChange={(e) => setAdjustAddCredits(Number(e.target.value))}
+                    placeholder="e.g. 100"
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <span className="text-xs text-slate-500 font-medium">credits</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {[0, 50, 100, 250, 500, 1000].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setAdjustAddCredits(c)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition ${
+                        adjustAddCredits === c
+                          ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      +{c}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Increments tenant purchased credits immediately for automated WhatsApp reminders.
+                </p>
+              </div>
+
+              {/* Plan Name Assignment */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Active Plan Label / Override (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={adjustPlanName}
+                  onChange={(e) => setAdjustPlanName(e.target.value)}
+                  placeholder={adjustModalTenant.planName}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAdjustModalTenant(null)}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAdjustment}
+                  className="flex items-center gap-2 px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs"
+                >
+                  {savingAdjustment ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Applying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save & Apply Adjustment</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
