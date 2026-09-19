@@ -458,21 +458,22 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                       letterSpacing: 0.8,
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.mintBg,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      '2 Days Trial Included',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryDark,
+                  if (_plans.any((p) => p['isFreeTrial'] == true || (p['name'] ?? '').toString().toLowerCase().contains('trial')))
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.mintBg,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _plans.firstWhere((p) => p['isFreeTrial'] == true || (p['name'] ?? '').toString().toLowerCase().contains('trial'))['tag'] ?? 'Trial Included',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryDark,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -488,9 +489,9 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                 ..._plans.map((plan) {
                   final id = plan['id']?.toString() ?? '';
                   final isSelected = id == _selectedPlanId;
-                  final isTrial = plan['isFreeTrial'] == true || (plan['name'] ?? '').toString().toLowerCase().contains('2 day');
                   final price = (plan['price'] as num?)?.toDouble() ?? 0.0;
                   final credits = plan['whatsappCredits'] ?? 50;
+                  final tag = plan['tag']?.toString().trim();
 
                   return GestureDetector(
                     onTap: () => setState(() => _selectedPlanId = id),
@@ -536,7 +537,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                                         color: AppColors.textPrimary,
                                       ),
                                     ),
-                                    if (isTrial) ...[
+                                    if (tag != null && tag.isNotEmpty) ...[
                                       const SizedBox(width: 8),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -544,9 +545,9 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                                           color: AppColors.appleGreenBg,
                                           borderRadius: BorderRadius.circular(6),
                                         ),
-                                        child: const Text(
-                                          'Free 2 Days',
-                                          style: TextStyle(
+                                        child: Text(
+                                          tag,
+                                          style: const TextStyle(
                                             fontSize: 10,
                                             fontWeight: FontWeight.w800,
                                             color: AppColors.appleGreen,
@@ -594,9 +595,11 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                                 ),
                               ),
                               if (price > 0)
-                                const Text(
-                                  '/ period',
-                                  style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                                Text(
+                                  plan['durationMonths'] != null && (plan['durationMonths'] as num) > 0
+                                      ? '/ ${plan['durationMonths'] == 1 ? 'month' : '${plan['durationMonths']} months'}'
+                                      : '/ period',
+                                  style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
                                 ),
                             ],
                           ),

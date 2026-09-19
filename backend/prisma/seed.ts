@@ -155,11 +155,11 @@ async function main() {
   // Create App Subscription Plans
   const appPlans = [
     {
-      name: 'Free trial 30 days',
+      name: '2 Days Free Trial',
       price: 0,
-      tag: 'Default',
-      description: 'All features unlocked for one month',
-      durationMonths: 1,
+      tag: '2 Days Free',
+      description: 'Full feature access for 2 days',
+      durationMonths: 0,
       isFreeTrial: true,
       isActive: true,
       sortOrder: 1,
