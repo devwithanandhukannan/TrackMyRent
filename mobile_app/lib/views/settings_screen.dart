@@ -361,8 +361,12 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     if (orderRes != null && orderRes['shortUrl'] != null) {
       final shortUrl = orderRes['shortUrl'] as String;
       final uri = Uri.parse(shortUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        try {
+          await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+        } catch (_) {}
       }
 
       if (!mounted) return;
@@ -370,7 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       showDialog(
         context: context,
         builder: (dialogCtx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Row(
             children: [
               Icon(Icons.verified_rounded, color: AppColors.primary),
@@ -378,7 +382,31 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
               Text('Confirm Payment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
-          content: Text('Complete the payment of ₹${price.toInt()} on Razorpay. Once done, tap below to activate $planName instantly.'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Payment of ₹${price.toInt()} on Razorpay for $planName.'),
+              const SizedBox(height: 14),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Open Razorpay Checkout ↗', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Complete payment on Razorpay via UPI / Cards / NetBanking, then tap below to activate.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx),
@@ -386,7 +414,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.primaryDark,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () async {
@@ -447,8 +475,12 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     if (orderRes != null && orderRes['shortUrl'] != null) {
       final shortUrl = orderRes['shortUrl'] as String;
       final uri = Uri.parse(shortUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        try {
+          await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+        } catch (_) {}
       }
 
       if (!mounted) return;
@@ -456,7 +488,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       showDialog(
         context: context,
         builder: (dialogCtx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Row(
             children: [
               Icon(Icons.bolt_rounded, color: AppColors.primary),
@@ -464,7 +496,31 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
               Text('Confirm Top-Up', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
-          content: Text('Complete the payment of ₹${cleanPrice.toInt()} on Razorpay for $count WhatsApp Credits.'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Payment of ₹${cleanPrice.toInt()} on Razorpay for $count WhatsApp Credits.'),
+              const SizedBox(height: 14),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Open Razorpay Checkout ↗', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Complete payment on Razorpay via UPI / Cards / NetBanking, then tap below to credit.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx),
@@ -472,7 +528,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.primaryDark,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () async {
