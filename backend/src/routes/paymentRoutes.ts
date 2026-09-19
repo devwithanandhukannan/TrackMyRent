@@ -10,6 +10,9 @@ import {
   getMemberSchedules,
   createRazorpayPaymentOrder,
   verifyRazorpayPayment,
+  createSubscriptionRazorpayOrder,
+  createCreditPackageRazorpayOrder,
+  verifySubscriptionOrCreditPayment,
   sendPaymentReminder,
 } from '../controllers/paymentController';
 
@@ -25,6 +28,9 @@ router.get('/transactions', getTransactions);
 router.get('/schedules/:memberId', getMemberSchedules);
 router.post('/razorpay/create-order', createRazorpayPaymentOrder);
 router.post('/razorpay/verify-payment', verifyRazorpayPayment);
+router.post('/razorpay/subscription-order', createSubscriptionRazorpayOrder);
+router.post('/razorpay/credit-order', createCreditPackageRazorpayOrder);
+router.post('/razorpay/verify-subscription', verifySubscriptionOrCreditPayment);
 router.post('/send-reminder', sendPaymentReminder);
 
 export default router;

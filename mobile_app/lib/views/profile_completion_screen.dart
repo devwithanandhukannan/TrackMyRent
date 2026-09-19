@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../utils/colors.dart';
 import '../main.dart';
@@ -109,19 +110,44 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
         );
       } catch (_) {}
 
-      // 2. Subscribe to selected package
+      // 2. Subscribe to selected package with Razorpay if paid
       final selectedPlan = _plans.firstWhere(
         (p) => p['id']?.toString() == _selectedPlanId,
         orElse: () => _plans.isNotEmpty ? _plans.first : ApiService.fallbackPlans.first,
       );
 
-      try {
-        await ApiService.subscribeAppPlan(
-          _selectedPlanId,
-          planName: selectedPlan['name'],
-          whatsappCredits: (selectedPlan['whatsappCredits'] as num?)?.toInt() ?? 50,
-        );
-      } catch (_) {}
+      final planPrice = (selectedPlan['price'] as num?)?.toDouble() ?? 0.0;
+      final credits = (selectedPlan['whatsappCredits'] as num?)?.toInt() ?? 50;
+
+      if (planPrice > 0) {
+        try {
+          final orderRes = await ApiService.createSubscriptionRazorpayOrder(
+            planId: _selectedPlanId,
+            planName: selectedPlan['name'],
+            amount: planPrice,
+            credits: credits,
+          );
+          if (orderRes != null && orderRes['shortUrl'] != null) {
+            final uri = Uri.parse(orderRes['shortUrl'] as String);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+            }
+            await ApiService.verifySubscriptionOrCreditPayment(
+              type: 'SUBSCRIPTION',
+              planName: selectedPlan['name'],
+              credits: credits,
+            );
+          }
+        } catch (_) {}
+      } else {
+        try {
+          await ApiService.subscribeAppPlan(
+            _selectedPlanId,
+            planName: selectedPlan['name'],
+            whatsappCredits: credits,
+          );
+        } catch (_) {}
+      }
 
       // 3. Mark profile as complete in local session (always guaranteed)
       await ApiService.markProfileCompleted(

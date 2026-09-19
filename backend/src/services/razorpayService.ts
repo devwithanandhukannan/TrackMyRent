@@ -40,3 +40,54 @@ export const verifyRazorpaySignature = (orderId: string, paymentId: string, sign
 
   return expectedSignature === signature;
 };
+
+/**
+ * Create a real Razorpay Hosted Payment Link with standard checkout
+ */
+export const createRazorpayPaymentLink = async ({
+  amountInRupees,
+  description,
+  customerName,
+  customerPhone,
+  customerEmail,
+  callbackUrl,
+  notes = {},
+}: {
+  amountInRupees: number;
+  description: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  callbackUrl?: string;
+  notes?: Record<string, any>;
+}) => {
+  const instance = getRazorpayInstance();
+  const phone = customerPhone ? customerPhone.replace(/[^0-9]/g, '') : '9876543210';
+  const cleanPhone = phone.length >= 10 ? `+91${phone.slice(-10)}` : '+919876543210';
+
+  const link = await instance.paymentLink.create({
+    amount: Math.round(amountInRupees * 100),
+    currency: 'INR',
+    accept_partial: false,
+    description,
+    customer: {
+      name: customerName || 'RentTrack Customer',
+      contact: cleanPhone,
+      email: customerEmail || 'billing@renttrack.app',
+    },
+    notify: { sms: false, email: false, whatsapp: false },
+    callback_url: callbackUrl,
+    callback_method: 'get',
+    notes,
+  });
+
+  return link;
+};
+
+/**
+ * Fetch live payment status directly from Razorpay
+ */
+export const fetchPaymentDetails = async (paymentId: string) => {
+  const instance = getRazorpayInstance();
+  return await instance.payments.fetch(paymentId);
+};

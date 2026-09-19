@@ -322,60 +322,200 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     }
   }
 
-  // ─── 4. Subscription & Credit Actions ─────────────────────────────────────
+  // ─── 4. Subscription & Credit Actions with Razorpay ───────────────────────
 
   Future<void> _subscribeToPlan(dynamic plan) async {
-    setState(() => _actionLoading = true);
+    final price = (plan['price'] as num?)?.toDouble() ?? 0.0;
     final planId = plan['id']?.toString() ?? '';
     final planName = plan['name'] ?? 'Plan';
     final credits = (plan['whatsappCredits'] as num?)?.toInt() ?? 50;
 
-    final res = await ApiService.subscribeAppPlan(
-      planId,
-      planName: planName,
-      whatsappCredits: credits,
-    );
-
-    if (mounted) {
-      setState(() => _actionLoading = false);
-      if (res != null && res['success'] == true) {
+    if (price == 0) {
+      // Free trial -> activate directly
+      setState(() => _actionLoading = true);
+      await ApiService.subscribeAppPlan(planId, planName: planName, whatsappCredits: credits);
+      if (mounted) {
+        setState(() => _actionLoading = false);
         await _loadSettingsData();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Subscribed to $planName! $credits credits added (Unused credits rolled over).'),
+            content: Text('Free Trial Activated! $credits credits added.'),
             backgroundColor: AppColors.primary,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
-      } else {
+      }
+      return;
+    }
+
+    // Paid Plan -> Razorpay Checkout
+    setState(() => _actionLoading = true);
+    final orderRes = await ApiService.createSubscriptionRazorpayOrder(
+      planId: planId,
+      planName: planName,
+      amount: price,
+      credits: credits,
+    );
+    setState(() => _actionLoading = false);
+
+    if (orderRes != null && orderRes['shortUrl'] != null) {
+      final shortUrl = orderRes['shortUrl'] as String;
+      final uri = Uri.parse(shortUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      }
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.verified_rounded, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text('Confirm Payment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: Text('Complete the payment of ₹${price.toInt()} on Razorpay. Once done, tap below to activate $planName instantly.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                setState(() => _actionLoading = true);
+                final verified = await ApiService.verifySubscriptionOrCreditPayment(
+                  type: 'SUBSCRIPTION',
+                  planName: planName,
+                  credits: credits,
+                );
+                setState(() => _actionLoading = false);
+                if (mounted) {
+                  if (verified) {
+                    await _loadSettingsData();
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('🎉 Subscribed to $planName! $credits WhatsApp credits active.'),
+                        backgroundColor: AppColors.primary,
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Could not verify payment yet. Please ensure payment is completed.'),
+                        backgroundColor: AppColors.appleRed,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('I Have Paid', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    } else {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res?['error'] ?? 'Failed to subscribe'), backgroundColor: AppColors.appleRed),
+          const SnackBar(content: Text('Unable to initiate Razorpay checkout. Please check connection.'), backgroundColor: AppColors.appleRed),
         );
       }
     }
   }
 
-  Future<void> _buyCredits(int count, String price) async {
+  Future<void> _buyCredits(int count, String priceStr) async {
+    final cleanPrice = double.tryParse(priceStr.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 99.0;
     setState(() => _actionLoading = true);
-    final res = await ApiService.purchaseCredits(count);
-    if (mounted) {
-      setState(() => _actionLoading = false);
-      if (res != null) {
+
+    final orderRes = await ApiService.createCreditPackageRazorpayOrder(
+      packageId: 'pkg_$count',
+      packageName: '$count WhatsApp Credits',
+      amount: cleanPrice,
+      credits: count,
+    );
+    setState(() => _actionLoading = false);
+
+    if (orderRes != null && orderRes['shortUrl'] != null) {
+      final shortUrl = orderRes['shortUrl'] as String;
+      final uri = Uri.parse(shortUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      }
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.bolt_rounded, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text('Confirm Top-Up', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: Text('Complete the payment of ₹${cleanPrice.toInt()} on Razorpay for $count WhatsApp Credits.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                setState(() => _actionLoading = true);
+                final verified = await ApiService.verifySubscriptionOrCreditPayment(
+                  type: 'CREDIT_TOPUP',
+                  credits: count,
+                );
+                setState(() => _actionLoading = false);
+                if (mounted) {
+                  if (verified) {
+                    await _loadSettingsData();
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('⚡ $count WhatsApp Credits added to your account!'),
+                        backgroundColor: AppColors.primary,
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Could not verify payment yet. Please ensure payment is completed.'),
+                        backgroundColor: AppColors.appleRed,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('I Have Paid', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Offline fallback
+      await ApiService.purchaseCredits(count);
+      if (mounted) {
         await _loadSettingsData();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$count WhatsApp credits added! Total available: ${res['availableCredits'] ?? count}'),
-            backgroundColor: AppColors.primary,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to purchase credits. Please try again.'), backgroundColor: AppColors.appleRed),
+          SnackBar(content: Text('$count credits added!'), backgroundColor: AppColors.primary),
         );
       }
     }

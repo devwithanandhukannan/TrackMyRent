@@ -743,4 +743,107 @@ class ApiService {
     }
     return null;
   }
+
+  // ─── Razorpay Payment Integration ──────────────────────────────────────────
+
+  static Future<Map<String, dynamic>?> createSubscriptionRazorpayOrder({
+    required String planId,
+    required String planName,
+    required double amount,
+    required int credits,
+  }) async {
+    final orgId = await getOrgId();
+    final prefs = await SharedPreferences.getInstance();
+    final phone = prefs.getString('renttrack_phone') ?? '9876543210';
+    final name = prefs.getString('renttrack_user_name') ?? 'Property Owner';
+
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.post(
+          Uri.parse('$host/payments/razorpay/subscription-order'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'organizationId': orgId,
+            'planId': planId,
+            'planName': planName,
+            'amount': amount,
+            'credits': credits,
+            'phone': phone,
+            'name': name,
+          }),
+        ).timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return jsonDecode(response.body);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> createCreditPackageRazorpayOrder({
+    required String packageId,
+    required String packageName,
+    required double amount,
+    required int credits,
+  }) async {
+    final orgId = await getOrgId();
+    final prefs = await SharedPreferences.getInstance();
+    final phone = prefs.getString('renttrack_phone') ?? '9876543210';
+    final name = prefs.getString('renttrack_user_name') ?? 'Property Owner';
+
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.post(
+          Uri.parse('$host/payments/razorpay/credit-order'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'organizationId': orgId,
+            'packageId': packageId,
+            'packageName': packageName,
+            'amount': amount,
+            'credits': credits,
+            'phone': phone,
+            'name': name,
+          }),
+        ).timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return jsonDecode(response.body);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  static Future<bool> verifySubscriptionOrCreditPayment({
+    required String type,
+    String? planName,
+    required int credits,
+    String? paymentId,
+    String? paymentLinkId,
+  }) async {
+    final orgId = await getOrgId();
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.post(
+          Uri.parse('$host/payments/razorpay/verify-subscription'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'organizationId': orgId,
+            'type': type,
+            'planName': planName,
+            'credits': credits,
+            'paymentId': paymentId,
+            'paymentLinkId': paymentLinkId,
+          }),
+        ).timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
 }
