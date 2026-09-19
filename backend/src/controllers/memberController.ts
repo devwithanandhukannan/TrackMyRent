@@ -221,18 +221,41 @@ export const createCustomFieldDefinition = async (req: Request, res: Response) =
   try {
     const { organizationId, fieldName, fieldType = 'TEXT', options = [], isRequired = false } = req.body;
 
+    if (!fieldName || !String(fieldName).trim()) {
+      return res.status(400).json({ error: 'Field label/name is required' });
+    }
+
+    let orgId = organizationId ? String(organizationId) : null;
+    if (!orgId) {
+      const firstOrg = await prisma.organization.findFirst();
+      orgId = firstOrg?.id ?? null;
+    }
+    if (!orgId) {
+      return res.status(400).json({ error: 'Organization ID is required' });
+    }
+
+    // Map and sanitize fieldType to valid CustomFieldType enum
+    let normalizedType: any = 'TEXT';
+    const rawType = String(fieldType).toUpperCase().trim();
+    if (rawType === 'NUMBER') normalizedType = 'NUMBER';
+    else if (rawType === 'DATE') normalizedType = 'DATE';
+    else if (rawType === 'DROPDOWN') normalizedType = 'DROPDOWN';
+    else if (rawType === 'CHECKBOX' || rawType === 'BOOLEAN') normalizedType = 'CHECKBOX';
+    else if (rawType === 'MULTI_LINE' || rawType === 'MULTILINE' || rawType === 'TEXTAREA') normalizedType = 'MULTI_LINE';
+    else normalizedType = 'TEXT';
+
     const customField = await prisma.customFieldDefinition.create({
       data: {
-        organizationId,
-        fieldName,
-        fieldType,
-        options,
-        isRequired,
+        organizationId: orgId,
+        fieldName: String(fieldName).trim(),
+        fieldType: normalizedType,
+        options: Array.isArray(options) ? options : [],
+        isRequired: Boolean(isRequired),
       },
     });
 
-    res.status(201).json({ message: 'Custom field definition created', customField });
+    res.status(201).json({ success: true, message: 'Custom field definition created', customField });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    res.status(500).json({ success: false, error: (error as Error).message });
   }
 };

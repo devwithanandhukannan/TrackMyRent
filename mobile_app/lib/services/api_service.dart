@@ -366,23 +366,47 @@ class ApiService {
     bool isRequired = false,
   }) async {
     final orgId = await getOrgId();
-    final response = await http.post(
-      Uri.parse('$baseUrl/members/custom-fields'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'organizationId': orgId,
-        'fieldName': fieldName,
-        'fieldType': fieldType,
-        'options': options,
-        'isRequired': isRequired,
-      }),
-    );
-    return response.statusCode == 200 || response.statusCode == 201;
+    String normalized = fieldType.toUpperCase().trim();
+    if (normalized == 'BOOLEAN') normalized = 'CHECKBOX';
+    if (!['TEXT', 'NUMBER', 'DATE', 'DROPDOWN', 'CHECKBOX', 'MULTI_LINE'].contains(normalized)) {
+      normalized = 'TEXT';
+    }
+
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.post(
+          Uri.parse('$host/members/custom-fields'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'organizationId': orgId,
+            'fieldName': fieldName,
+            'fieldType': normalized,
+            'options': options,
+            'isRequired': isRequired,
+          }),
+        ).timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          _activeBaseUrl = host;
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
   }
 
   static Future<bool> deleteCustomField(String id) async {
-    final response = await http.delete(Uri.parse('$baseUrl/plans/custom-fields/$id'));
-    return response.statusCode == 200;
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http
+            .delete(Uri.parse('$host/plans/custom-fields/$id'))
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
   }
 
   // ─── Expenses ───────────────────────────────────────────────────────────────

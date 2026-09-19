@@ -237,11 +237,23 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                     isRequired: isRequired,
                   );
                   if (ctx.mounted) Navigator.pop(ctx);
-                  if (mounted && success) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Custom field added!'), backgroundColor: AppColors.primary),
-                    );
-                    _loadSettingsData();
+                  if (mounted) {
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Custom field added successfully!'),
+                          backgroundColor: AppColors.primary,
+                        ),
+                      );
+                      _loadSettingsData();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Failed to add custom field. Please retry.'),
+                          backgroundColor: AppColors.appleRed,
+                        ),
+                      );
+                    }
                   }
                 }
               },
