@@ -1762,187 +1762,247 @@ export default function AdminDashboard() {
             {/* Top 4 Bento KPI Metric Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Card 1: Total Platform Revenue */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between hover:border-slate-300 transition group">
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Total Revenue Collected
-                  </p>
-                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Platform Revenue</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  </div>
+                  <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-1">
                     ₹{tenantBillingStats.totalPlatformRevenue.toLocaleString("en-IN")}
                   </h3>
-                  <div className="flex items-center gap-1.5 mt-2 text-xs font-medium text-emerald-600">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    <span>From subscriptions & credits</span>
+                  <div className="flex items-center gap-1 mt-2 text-[11px] font-medium text-slate-500">
+                    <span className="text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                      ₹{tenantBilling.reduce((acc, t) => acc + t.subscriptionPaid, 0).toLocaleString()} sub
+                    </span>
+                    <span>+</span>
+                    <span className="text-purple-700 font-semibold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                      ₹{tenantBilling.reduce((acc, t) => acc + t.creditsPaid, 0).toLocaleString()} credits
+                    </span>
                   </div>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold flex-shrink-0 group-hover:scale-105 transition">
                   <IndianRupee className="w-6 h-6" />
                 </div>
               </div>
 
               {/* Card 2: Active Subscriptions */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between hover:border-slate-300 transition group">
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Active Subscriptions
-                  </p>
-                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
-                    {tenantBillingStats.activeSubscriptionsCount}
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Active Subscriptions</span>
+                  </div>
+                  <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-1">
+                    {tenantBillingStats.activeSubscriptionsCount}{" "}
+                    <span className="text-sm font-semibold text-slate-400">
+                      / {tenantBillingStats.totalTenants}
+                    </span>
                   </h3>
-                  <p className="text-xs text-slate-500 mt-2">
-                    Across {tenantBillingStats.totalTenants} registered facilities
-                  </p>
+                  <div className="text-[11px] text-slate-500 mt-2 font-medium">
+                    {tenantBilling.filter((t) => !t.isFreeTrial).length} paid plans ·{" "}
+                    {tenantBilling.filter((t) => t.isFreeTrial).length} free trial
+                  </div>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold flex-shrink-0 group-hover:scale-105 transition">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
               </div>
 
               {/* Card 3: Expiring Soon (Action Needed) */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between hover:border-slate-300 transition group">
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Expiring in ≤ 5 Days
-                  </p>
-                  <h3 className={`text-2xl font-extrabold mt-1 ${tenantBillingStats.expiringSoonCount > 0 ? "text-amber-600" : "text-slate-900"}`}>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Expiring in ≤ 5 Days</span>
+                  </div>
+                  <h3
+                    className={`text-2xl font-extrabold tracking-tight mt-1 ${
+                      tenantBillingStats.expiringSoonCount > 0 ? "text-amber-600" : "text-slate-900"
+                    }`}
+                  >
                     {tenantBillingStats.expiringSoonCount}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-2">
-                    {tenantBillingStats.expiringSoonCount > 0 ? "Requires renewal reminder" : "All tenants in good standing"}
-                  </p>
+                  <div className="text-[11px] text-slate-500 mt-2 font-medium flex items-center gap-1">
+                    {tenantBillingStats.expiringSoonCount > 0 ? (
+                      <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-semibold border border-amber-200/60">
+                        Renewal attention required
+                      </span>
+                    ) : (
+                      <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold border border-emerald-100 flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        All tenants in good standing
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold ${
-                  tenantBillingStats.expiringSoonCount > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"
-                }`}>
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold flex-shrink-0 group-hover:scale-105 transition ${
+                    tenantBillingStats.expiringSoonCount > 0
+                      ? "bg-amber-50 text-amber-600 animate-pulse"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
                   <AlertCircle className="w-6 h-6" />
                 </div>
               </div>
 
               {/* Card 4: WhatsApp Credits Purchased */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between hover:border-slate-300 transition group">
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    WhatsApp Credits Issued
-                  </p>
-                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Credits Issued</span>
+                  </div>
+                  <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-1">
                     {tenantBillingStats.totalCreditsPurchased.toLocaleString("en-IN")}
                   </h3>
-                  <p className="text-xs text-purple-600 font-medium mt-2">
-                    {tenantBilling.reduce((acc, t) => acc + t.usedCredits, 0).toLocaleString("en-IN")} credits delivered
-                  </p>
+                  <div className="text-[11px] text-purple-700 font-semibold mt-2 flex items-center gap-1.5">
+                    <span className="bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                      {tenantBilling.reduce((acc, t) => acc + t.usedCredits, 0).toLocaleString("en-IN")} sent
+                    </span>
+                    <span className="text-slate-400 font-normal">
+                      · {tenantBilling.reduce((acc, t) => acc + t.availableCredits, 0).toLocaleString("en-IN")} balance
+                    </span>
+                  </div>
                 </div>
-                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold flex-shrink-0 group-hover:scale-105 transition">
                   <Coins className="w-6 h-6" />
                 </div>
               </div>
             </div>
 
             {/* Filter & Search Bar */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
               {/* Search Bar */}
               <div className="relative flex-1 max-w-md">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Search tenant name, admin contact, phone or plan..."
+                  placeholder="Search tenant, facility, admin contact, or phone..."
                   value={billingSearch}
                   onChange={(e) => setBillingSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
                 />
+                {billingSearch && (
+                  <button
+                    onClick={() => setBillingSearch("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               {/* Status & Plan Type Filters */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Status Segment */}
+                <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium border border-slate-200/60">
                   <button
                     onClick={() => setBillingStatusFilter("ALL")}
-                    className={`px-3 py-1.5 rounded-lg transition ${
-                      billingStatusFilter === "ALL" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    className={`px-3 py-1.5 rounded-lg transition text-xs ${
+                      billingStatusFilter === "ALL"
+                        ? "bg-white text-slate-900 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    All Status
+                    All ({tenantBilling.length})
                   </button>
                   <button
                     onClick={() => setBillingStatusFilter("ACTIVE")}
-                    className={`px-3 py-1.5 rounded-lg transition ${
-                      billingStatusFilter === "ACTIVE" ? "bg-white text-emerald-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    className={`px-3 py-1.5 rounded-lg transition text-xs ${
+                      billingStatusFilter === "ACTIVE"
+                        ? "bg-white text-emerald-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Active
+                    Active ({tenantBilling.filter((t) => t.validityStatus === "ACTIVE").length})
                   </button>
                   <button
                     onClick={() => setBillingStatusFilter("EXPIRING_SOON")}
-                    className={`px-3 py-1.5 rounded-lg transition ${
-                      billingStatusFilter === "EXPIRING_SOON" ? "bg-white text-amber-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    className={`px-3 py-1.5 rounded-lg transition text-xs ${
+                      billingStatusFilter === "EXPIRING_SOON"
+                        ? "bg-white text-amber-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Expiring Soon
+                    Expiring ({tenantBilling.filter((t) => t.validityStatus === "EXPIRING_SOON").length})
                   </button>
                   <button
                     onClick={() => setBillingStatusFilter("EXPIRED")}
-                    className={`px-3 py-1.5 rounded-lg transition ${
-                      billingStatusFilter === "EXPIRED" ? "bg-white text-rose-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    className={`px-3 py-1.5 rounded-lg transition text-xs ${
+                      billingStatusFilter === "EXPIRED"
+                        ? "bg-white text-rose-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Expired
+                    Expired ({tenantBilling.filter((t) => t.validityStatus === "EXPIRED").length})
                   </button>
                 </div>
 
-                <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium">
+                {/* Plan Type Segment */}
+                <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium border border-slate-200/60">
                   <button
                     onClick={() => setBillingPlanTypeFilter("ALL")}
-                    className={`px-3 py-1.5 rounded-lg transition ${
-                      billingPlanTypeFilter === "ALL" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    className={`px-3 py-1.5 rounded-lg transition text-xs ${
+                      billingPlanTypeFilter === "ALL"
+                        ? "bg-white text-slate-900 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     All Plans
                   </button>
                   <button
                     onClick={() => setBillingPlanTypeFilter("PAID")}
-                    className={`px-3 py-1.5 rounded-lg transition ${
-                      billingPlanTypeFilter === "PAID" ? "bg-white text-blue-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    className={`px-3 py-1.5 rounded-lg transition text-xs ${
+                      billingPlanTypeFilter === "PAID"
+                        ? "bg-white text-blue-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     Paid
                   </button>
                   <button
                     onClick={() => setBillingPlanTypeFilter("TRIAL")}
-                    className={`px-3 py-1.5 rounded-lg transition ${
-                      billingPlanTypeFilter === "TRIAL" ? "bg-white text-purple-700 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    className={`px-3 py-1.5 rounded-lg transition text-xs ${
+                      billingPlanTypeFilter === "TRIAL"
+                        ? "bg-white text-purple-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Free Trial
+                    Trial
                   </button>
                 </div>
               </div>
             </div>
 
             {/* Tenant Payments & Validity Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-base text-slate-900">Tenant Subscription & Billing Records</h3>
-                  <p className="text-xs text-slate-500">
-                    Live financial ledger tracking plan fees, WhatsApp credits, and subscription lifecycle.
+                  <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                    <span>Tenant Subscription & Billing Records</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Live financial ledger tracking subscription fees, WhatsApp credits, and renewal dates.
                   </p>
                 </div>
-                <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg">
-                  {tenantBilling.filter((tenant) => {
-                    const matchesSearch =
-                      tenant.name.toLowerCase().includes(billingSearch.toLowerCase()) ||
-                      tenant.adminName.toLowerCase().includes(billingSearch.toLowerCase()) ||
-                      tenant.adminPhone.toLowerCase().includes(billingSearch.toLowerCase()) ||
-                      tenant.adminEmail.toLowerCase().includes(billingSearch.toLowerCase()) ||
-                      tenant.planName.toLowerCase().includes(billingSearch.toLowerCase()) ||
-                      tenant.type.toLowerCase().includes(billingSearch.toLowerCase());
-                    const matchesStatus =
-                      billingStatusFilter === "ALL" || tenant.validityStatus === billingStatusFilter;
-                    const matchesPlanType =
-                      billingPlanTypeFilter === "ALL" ||
-                      (billingPlanTypeFilter === "PAID" && !tenant.isFreeTrial) ||
-                      (billingPlanTypeFilter === "TRIAL" && tenant.isFreeTrial);
-                    return matchesSearch && matchesStatus && matchesPlanType;
-                  }).length}{" "}
+                <span className="text-xs font-bold px-3 py-1 bg-slate-100 text-slate-700 rounded-lg border border-slate-200/60">
+                  {
+                    tenantBilling.filter((tenant) => {
+                      const matchesSearch =
+                        tenant.name.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                        tenant.adminName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                        tenant.adminPhone.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                        tenant.adminEmail.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                        tenant.planName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                        tenant.type.toLowerCase().includes(billingSearch.toLowerCase());
+                      const matchesStatus =
+                        billingStatusFilter === "ALL" || tenant.validityStatus === billingStatusFilter;
+                      const matchesPlanType =
+                        billingPlanTypeFilter === "ALL" ||
+                        (billingPlanTypeFilter === "PAID" && !tenant.isFreeTrial) ||
+                        (billingPlanTypeFilter === "TRIAL" && tenant.isFreeTrial);
+                      return matchesSearch && matchesStatus && matchesPlanType;
+                    }).length
+                  }{" "}
                   Tenants Listed
                 </span>
               </div>
@@ -1950,13 +2010,13 @@ export default function AdminDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-200/80 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <tr className="border-b border-slate-200/80 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                       <th className="px-6 py-3.5">Tenant Facility</th>
-                      <th className="px-4 py-3.5">Admin Contact</th>
-                      <th className="px-4 py-3.5">Active Plan</th>
-                      <th className="px-4 py-3.5">Subscription Validity</th>
-                      <th className="px-4 py-3.5">WhatsApp Credits</th>
-                      <th className="px-4 py-3.5">Total Paid</th>
+                      <th className="px-5 py-3.5">Admin Contact</th>
+                      <th className="px-5 py-3.5">Active Plan</th>
+                      <th className="px-5 py-3.5">Subscription Validity</th>
+                      <th className="px-5 py-3.5">WhatsApp Credits</th>
+                      <th className="px-5 py-3.5">Total Paid</th>
                       <th className="px-6 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1979,99 +2039,112 @@ export default function AdminDashboard() {
                         return matchesSearch && matchesStatus && matchesPlanType;
                       })
                       .map((tenant) => {
-                        const usagePercent = tenant.purchasedCredits > 0
-                          ? Math.min(100, Math.round((tenant.usedCredits / tenant.purchasedCredits) * 100))
-                          : 0;
+                        const usagePercent =
+                          tenant.purchasedCredits > 0
+                            ? Math.min(100, Math.round((tenant.usedCredits / tenant.purchasedCredits) * 100))
+                            : 0;
 
                         return (
-                          <tr key={tenant.id} className="hover:bg-slate-50/70 transition-colors">
+                          <tr key={tenant.id} className="hover:bg-slate-50/80 transition-colors">
                             {/* Tenant Facility */}
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 font-bold flex items-center justify-center flex-shrink-0">
-                                  <Building className="w-4 h-4" />
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 text-blue-700 font-bold flex items-center justify-center flex-shrink-0 border border-blue-100 shadow-2xs">
+                                  <Building2 className="w-5 h-5" />
                                 </div>
                                 <div>
-                                  <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                                    {tenant.name}
-                                    <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                  <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                    <span>{tenant.name}</span>
+                                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200/60">
                                       {tenant.type}
                                     </span>
                                   </div>
-                                  <div className="text-[11px] text-slate-400 mt-0.5">
-                                    {tenant.membersCount} active customer{tenant.membersCount === 1 ? "" : "s"} enrolled
+                                  <div className="text-[11px] text-slate-400 mt-0.5 font-medium flex items-center gap-1.5">
+                                    <Users className="w-3 h-3 text-slate-400" />
+                                    <span>
+                                      {tenant.membersCount} active customer{tenant.membersCount === 1 ? "" : "s"}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
                             </td>
 
                             {/* Admin Contact */}
-                            <td className="px-4 py-4">
-                              <div className="font-semibold text-slate-800">{tenant.adminName}</div>
-                              <div className="flex items-center gap-1.5 text-slate-500 mt-0.5">
-                                <Phone className="w-3 h-3 text-slate-400" />
-                                <span className="font-mono">{tenant.adminPhone}</span>
+                            <td className="px-5 py-4 whitespace-nowrap">
+                              <div className="font-semibold text-slate-800 text-xs">{tenant.adminName}</div>
+                              <div className="flex items-center gap-2 text-slate-600 mt-1">
+                                <div className="flex items-center gap-1 font-mono text-xs text-slate-700">
+                                  <Phone className="w-3 h-3 text-slate-400" />
+                                  <span>{tenant.adminPhone}</span>
+                                </div>
                                 {tenant.adminPhone && tenant.adminPhone !== "-" && (
                                   <a
                                     href={`https://wa.me/${tenant.adminPhone.replace(/\D/g, "")}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    title="Message Admin on WhatsApp"
-                                    className="text-emerald-600 hover:text-emerald-700 ml-1"
+                                    title="Send WhatsApp message"
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100 transition text-[10px] font-semibold"
                                   >
-                                    <Send className="w-3 h-3" />
+                                    <Send className="w-2.5 h-2.5" />
+                                    <span>Chat</span>
                                   </a>
                                 )}
                               </div>
-                              <div className="text-[11px] text-slate-400 truncate max-w-[150px]">
+                              <div className="text-[11px] text-slate-400 truncate max-w-[180px] mt-0.5">
                                 {tenant.adminEmail}
                               </div>
                             </td>
 
                             {/* Active Plan */}
-                            <td className="px-4 py-4">
-                              <div className="font-bold text-slate-900">{tenant.planName}</div>
-                              <div className="flex items-center gap-1.5 mt-1">
+                            <td className="px-5 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900 text-sm capitalize">
+                                  {tenant.planName}
+                                </span>
                                 {tenant.isFreeTrial ? (
-                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                  <span className="inline-flex items-center text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200/80 tracking-wide">
                                     Free Trial
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                                    Paid Plan (₹{tenant.planPrice})
+                                  <span className="inline-flex items-center text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 tracking-wide">
+                                    Paid · ₹{tenant.planPrice}
                                   </span>
                                 )}
-                                <span className="text-[11px] text-slate-400 font-medium">
-                                  {tenant.durationMonths}mo
-                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-medium mt-1 flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                <span>{tenant.durationMonths} Month Billing Cycle</span>
                               </div>
                             </td>
 
                             {/* Subscription Validity */}
-                            <td className="px-4 py-4">
-                              <div className="text-xs font-semibold text-slate-800">
-                                {new Date(tenant.expiresAt).toLocaleDateString("en-IN", {
-                                  day: "numeric",
-                                  month: "short",
-                                  year: "numeric",
-                                })}
+                            <td className="px-5 py-4 whitespace-nowrap">
+                              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                <span>
+                                  {new Date(tenant.expiresAt).toLocaleDateString("en-IN", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </span>
                               </div>
                               <div className="mt-1.5">
                                 {tenant.validityStatus === "ACTIVE" && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    <Clock className="w-3 h-3 text-emerald-600" />
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                     {tenant.daysRemaining} days left
                                   </span>
                                 )}
                                 {tenant.validityStatus === "EXPIRING_SOON" && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-                                    <AlertCircle className="w-3 h-3 text-amber-600" />
-                                    {tenant.daysRemaining} days left
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                    {tenant.daysRemaining} days left (Renew)
                                   </span>
                                 )}
                                 {tenant.validityStatus === "EXPIRED" && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                                    <AlertCircle className="w-3 h-3 text-rose-600" />
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                                     Expired
                                   </span>
                                 )}
@@ -2079,39 +2152,44 @@ export default function AdminDashboard() {
                             </td>
 
                             {/* WhatsApp Credits */}
-                            <td className="px-4 py-4">
-                              <div className="flex items-center gap-1.5">
+                            <td className="px-5 py-4 whitespace-nowrap">
+                              <div className="flex items-baseline gap-1.5">
                                 <span className="font-extrabold text-slate-900 text-sm">
-                                  {tenant.availableCredits}
+                                  {tenant.availableCredits.toLocaleString()}
                                 </span>
-                                <span className="text-slate-400 text-xs">
-                                  / {tenant.purchasedCredits} total
+                                <span className="text-[11px] text-slate-400">
+                                  available of {tenant.purchasedCredits.toLocaleString()}
                                 </span>
                               </div>
-                              <div className="w-32 bg-slate-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                              <div className="w-36 bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
                                 <div
-                                  className="bg-purple-600 h-1.5 rounded-full transition-all"
+                                  className="bg-gradient-to-r from-purple-500 to-indigo-600 h-1.5 rounded-full transition-all"
                                   style={{ width: `${usagePercent}%` }}
                                 ></div>
                               </div>
-                              <div className="text-[10px] text-slate-400 mt-1">
-                                {tenant.usedCredits} credits consumed ({usagePercent}%)
+                              <div className="text-[10px] text-slate-400 mt-1 font-medium">
+                                {tenant.usedCredits} used ({usagePercent}%)
                               </div>
                             </td>
 
                             {/* Total Paid & Breakdown */}
-                            <td className="px-4 py-4">
-                              <div className="font-extrabold text-slate-900 text-base">
-                                ₹{tenant.totalPaid.toLocaleString("en-IN")}
+                            <td className="px-5 py-4 whitespace-nowrap">
+                              <div className="text-base font-extrabold text-slate-900 tracking-tight flex items-baseline gap-1">
+                                <span>₹{tenant.totalPaid.toLocaleString("en-IN")}</span>
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase">total</span>
                               </div>
-                              <div className="text-[11px] text-slate-500 mt-0.5 space-y-0.5">
-                                <div>Sub: <span className="font-semibold text-slate-700">₹{tenant.subscriptionPaid.toLocaleString()}</span></div>
-                                <div>Credits: <span className="font-semibold text-slate-700">₹{tenant.creditsPaid.toLocaleString()}</span></div>
+                              <div className="flex items-center gap-1.5 mt-1.5">
+                                <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                  Plan: ₹{tenant.subscriptionPaid}
+                                </span>
+                                <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100">
+                                  Credits: ₹{tenant.creditsPaid}
+                                </span>
                               </div>
                             </td>
 
                             {/* Actions */}
-                            <td className="px-6 py-4 text-right">
+                            <td className="px-6 py-4 text-right whitespace-nowrap">
                               <button
                                 onClick={() => {
                                   setAdjustModalTenant(tenant);
@@ -2119,10 +2197,10 @@ export default function AdminDashboard() {
                                   setAdjustAddCredits(100);
                                   setAdjustPlanName(tenant.planName);
                                 }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-xl text-xs transition border border-blue-200/60 shadow-xs"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-blue-600 font-semibold rounded-xl text-xs transition border border-slate-200 hover:border-blue-300 shadow-2xs group"
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
-                                <span>Adjust / Extend</span>
+                                <Edit3 className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition" />
+                                <span>Adjust & Extend</span>
                               </button>
                             </td>
                           </tr>
