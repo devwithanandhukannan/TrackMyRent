@@ -14,9 +14,10 @@ class AddMemberScreen extends StatefulWidget {
 class _AddMemberScreenState extends State<AddMemberScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _batchController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _monthlyRentController = TextEditingController();
-  final TextEditingController _dueDayController = TextEditingController(text: '5');
+  final TextEditingController _dueDayController = TextEditingController(text: '1');
+  final TextEditingController _depositController = TextEditingController(text: '0');
 
   bool _isLoading = false;
   List<dynamic> _plans = [];
@@ -24,6 +25,13 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
   String? _selectedGroupId;
   List<dynamic> _customFields = [];
   final Map<String, TextEditingController> _customControllers = {};
+
+  static const primaryGreen = Color(0xFF006948);
+  static const secondaryContainer = Color(0xFF6CF8BB);
+  static const onSecondaryContainer = Color(0xFF00714D);
+  static const surfaceBg = Color(0xFFF7F9FB);
+  static const textPrimary = Color(0xFF191C1E);
+  static const textSecondary = Color(0xFF3D4A42);
 
   @override
   void initState() {
@@ -37,9 +45,10 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _batchController.dispose();
+    _emailController.dispose();
     _monthlyRentController.dispose();
     _dueDayController.dispose();
+    _depositController.dispose();
     for (var c in _customControllers.values) {
       c.dispose();
     }
@@ -69,10 +78,12 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
             );
             if (match != null) {
               _monthlyRentController.text = '${match['price']?.toInt() ?? 0}';
+              _depositController.text = '${(match['price']?.toInt() ?? 0) * 2}';
             }
           } else if (fetchedPlans.isNotEmpty && _selectedPlanId == null) {
             _selectedPlanId = fetchedPlans.first['id'];
             _monthlyRentController.text = '${fetchedPlans.first['price']?.toInt() ?? 0}';
+            _depositController.text = '${(fetchedPlans.first['price']?.toInt() ?? 0) * 2}';
           }
         });
       }
@@ -85,7 +96,9 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
     setState(() {
       _selectedPlanId = plan['id'];
       _selectedGroupId = null; // reset group if plan changes
-      _monthlyRentController.text = '${plan['price']?.toInt() ?? 0}';
+      final price = (plan['price'] as num?)?.toInt() ?? 0;
+      _monthlyRentController.text = '$price';
+      _depositController.text = '${price * 2}';
       if (plan['customDayNumber'] != null) {
         _dueDayController.text = '${plan['customDayNumber']}';
       }
@@ -98,7 +111,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
 
     if (name.isEmpty || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter member name and phone number')),
+        const SnackBar(content: Text('Please enter resident name and phone number')),
       );
       return;
     }
@@ -106,7 +119,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
     if (_selectedPlanId == null || _selectedPlanId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Plan is mandatory: You cannot add a member without selecting a Plan.'),
+          content: Text('Plan is mandatory: Please select a plan for this resident.'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -115,6 +128,9 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
 
     // Validate and collect custom fields
     final Map<String, dynamic> customData = {};
+    if (_emailController.text.trim().isNotEmpty) {
+      customData['Email'] = _emailController.text.trim();
+    }
     for (var f in _customFields) {
       final fName = f['fieldName']?.toString() ?? '';
       final val = _customControllers[fName]?.text.trim() ?? '';
@@ -150,14 +166,14 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Member added successfully!'),
-              backgroundColor: Color(0xFF059669),
+              content: Text('Resident registered successfully!'),
+              backgroundColor: primaryGreen,
             ),
           );
           Navigator.pop(context, true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to add member')),
+            const SnackBar(content: Text('Failed to add resident. Please check backend connection.')),
           );
         }
       }
@@ -174,24 +190,27 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const backgroundColor = Color(0xFFF8FAF9);
-    const primaryGreen = Color(0xFF059669);
-
-    final displayPlans = _plans;
+    final selectedPlan = _plans.firstWhere(
+      (p) => p['id']?.toString() == _selectedPlanId,
+      orElse: () => null,
+    );
+    final groups = (selectedPlan != null && selectedPlan['groups'] is List)
+        ? (selectedPlan['groups'] as List)
+        : [];
 
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: surfaceBg,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0.5,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: textPrimary, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Add member',
+          'Resident Registration',
           style: TextStyle(
-            color: Color(0xFF0F172A),
+            color: textPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
@@ -199,20 +218,27 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Card 1: Member Details
+              // Header Subtitle Banner
+              const Text(
+                'Enter member details and configure billing schedule',
+                style: TextStyle(fontSize: 13, color: textSecondary),
+              ),
+              const SizedBox(height: 16),
+
+              // ================= SECTION 1: BASIC INFORMATION =================
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFF1F5F9)),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
+                      color: const Color(0xFF0F172A).withValues(alpha: 0.03),
                       blurRadius: 10,
                       offset: const Offset(0, 2),
                     ),
@@ -221,90 +247,153 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Member details',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF85F8C4).withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.person_outline, size: 18, color: primaryGreen),
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              '1. Basic Information',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textPrimary),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: secondaryContainer,
+                            borderRadius: BorderRadius.circular(9999),
+                          ),
+                          child: const Text(
+                            'Required',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: onSecondaryContainer),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Full name',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
+                    const SizedBox(height: 16),
+
+                    // Full Name Field
+                    const Text('Full Name *', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _nameController,
-                      style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                      style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
                       decoration: InputDecoration(
-                        hintText: 'e.g. Priya Sharma',
+                        prefixIcon: const Icon(Icons.badge_outlined, size: 20, color: Color(0xFF6D7A72)),
+                        hintText: 'e.g. Vikram Malhotra',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
                         filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
+                        fillColor: const Color(0xFFF2F4F6),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGreen, width: 1.5),
+                          borderSide: const BorderSide(color: primaryGreen, width: 2),
                         ),
                       ),
                     ),
                     const SizedBox(height: 14),
-                    const Text(
-                      'Phone number',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
+
+                    // Phone Number Field with WhatsApp sync
+                    const Text('Mobile Phone Number *', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
-                      style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                      style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w600, letterSpacing: 0.5),
                       decoration: InputDecoration(
-                        hintText: '+91 98765 43210',
+                        prefixIcon: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('🇮🇳 +91', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
+                              SizedBox(width: 8),
+                              Text('|', style: TextStyle(color: Color(0xFFCBD5E1))),
+                            ],
+                          ),
+                        ),
+                        hintText: '98765 43210',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
                         filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
+                        fillColor: const Color(0xFFF2F4F6),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGreen, width: 1.5),
+                          borderSide: const BorderSide(color: primaryGreen, width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: secondaryContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.chat_bubble_outline_rounded, size: 14, color: onSecondaryContainer),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Used for automated 1-tap reminders & digital receipts',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: onSecondaryContainer),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Email Address
+                    const Text('Email Address (Optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.mail_outline, size: 20, color: Color(0xFF6D7A72)),
+                        hintText: 'vikram@example.com',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                        filled: true,
+                        fillColor: const Color(0xFFF2F4F6),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: primaryGreen, width: 2),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 14),
 
-              const SizedBox(height: 16),
-
-              // Card 2: Workout / Billing details
+              // ================= SECTION 2: PLAN & ROOM ALLOCATION =================
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFF1F5F9)),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
+                      color: const Color(0xFF0F172A).withValues(alpha: 0.03),
                       blurRadius: 10,
                       offset: const Offset(0, 2),
                     ),
@@ -313,258 +402,216 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Workout details',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Pick a saved plan and the training batch.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF64748B),
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: secondaryContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.bed_outlined, size: 18, color: onSecondaryContainer),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          '2. Plan & Room Allocation',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textPrimary),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
 
-                    // Plans options list
-                    ...displayPlans.map((plan) {
-                      final planId = plan['id'] as String;
-                      final planName = plan['name'] as String;
-                      final planPrice = (plan['price'] as num?)?.toInt() ?? 0;
-                      final isSelected = _selectedPlanId == planId;
+                    const Text('Select Plan *', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
+                    const SizedBox(height: 8),
 
-                      return GestureDetector(
-                        onTap: () => _onPlanSelected(plan),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFF0FDF4) : Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isSelected ? primaryGreen : const Color(0xFFE2E8F0),
-                              width: isSelected ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE6F4EE),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(
-                                  Icons.auto_awesome_rounded,
-                                  size: 18,
-                                  color: primaryGreen,
-                                ),
+                    if (_plans.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF2F4F6),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          'No plans found. Please add a plan first from Plans & Rooms screen.',
+                          style: TextStyle(fontSize: 13, color: textSecondary),
+                        ),
+                      )
+                    else
+                      ..._plans.map((plan) {
+                        final planId = plan['id']?.toString() ?? '';
+                        final planName = plan['name'] ?? 'Plan';
+                        final planPrice = (plan['price'] as num?)?.toInt() ?? 0;
+                        final durationDays = plan['durationDays'] ?? 30;
+                        final isSelected = _selectedPlanId == planId;
+
+                        return GestureDetector(
+                          onTap: () => _onPlanSelected(plan),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: isSelected ? primaryGreen.withValues(alpha: 0.05) : const Color(0xFFF2F4F6),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isSelected ? primaryGreen : Colors.transparent,
+                                width: 2,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      planName,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF0F172A),
-                                      ),
+                                    Icon(
+                                      isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                                      color: isSelected ? primaryGreen : const Color(0xFF6D7A72),
+                                      size: 20,
                                     ),
-                                    const SizedBox(height: 2),
-                                    const Text(
-                                      '1 Month billing',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF64748B),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '₹${planPrice.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w900,
-                                        color: Color(0xFF0F172A),
-                                      ),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          planName,
+                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: textPrimary),
+                                        ),
+                                        Text(
+                                          '$durationDays Days billing cycle',
+                                          style: const TextStyle(fontSize: 11, color: textSecondary),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
+                                Text(
+                                  '₹$planPrice',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: isSelected ? primaryGreen : textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+
+                    // Room & Group Assignment (if groups exist)
+                    if (groups.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      const Text('Assigned Room / Batch', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Direct (No Room)'),
+                            selected: _selectedGroupId == null,
+                            onSelected: (_) => setState(() => _selectedGroupId = null),
+                            selectedColor: secondaryContainer,
+                            labelStyle: TextStyle(
+                              color: _selectedGroupId == null ? onSecondaryContainer : textSecondary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                          ...groups.map((g) {
+                            final gId = g['id']?.toString();
+                            final gName = g['name']?.toString() ?? 'Room';
+                            final isSel = _selectedGroupId == gId;
+                            return ChoiceChip(
+                              avatar: const Icon(Icons.meeting_room_outlined, size: 14),
+                              label: Text(gName),
+                              selected: isSel,
+                              onSelected: (_) => setState(() => _selectedGroupId = gId),
+                              selectedColor: secondaryContainer,
+                              labelStyle: TextStyle(
+                                color: isSel ? onSecondaryContainer : textSecondary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
                               ),
-                              Text(
-                                isSelected ? 'Selected' : 'Tap to select',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: isSelected ? primaryGreen : const Color(0xFF64748B),
+                            );
+                          }),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 14),
+                    // Monthly Rent & Due Day Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Monthly Rent (₹)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: _monthlyRentController,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w700),
+                                decoration: InputDecoration(
+                                  prefixText: '₹ ',
+                                  filled: true,
+                                  fillColor: const Color(0xFFF2F4F6),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: primaryGreen, width: 2),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      );
-                    }),
-
-                    // Group / Batch Selector if groups exist for this plan
-                    Builder(
-                      builder: (context) {
-                        final selectedPlan = _plans.firstWhere(
-                          (p) => p['id']?.toString() == _selectedPlanId,
-                          orElse: () => null,
-                        );
-                        final groups = (selectedPlan != null && selectedPlan['groups'] is List)
-                            ? (selectedPlan['groups'] as List)
-                            : [];
-
-                        if (groups.isEmpty) return const SizedBox.shrink();
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 14),
-                            const Text(
-                              'Group / Batch',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF334155),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                ChoiceChip(
-                                  label: const Text('Direct (No Group)'),
-                                  selected: _selectedGroupId == null,
-                                  onSelected: (_) => setState(() => _selectedGroupId = null),
-                                  selectedColor: const Color(0xFFE6F4EE),
-                                  labelStyle: TextStyle(
-                                    color: _selectedGroupId == null ? primaryGreen : const Color(0xFF475569),
-                                    fontWeight: FontWeight.w600,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Due Day (1-31)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: _dueDayController,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w700),
+                                decoration: InputDecoration(
+                                  hintText: '1',
+                                  filled: true,
+                                  fillColor: const Color(0xFFF2F4F6),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: primaryGreen, width: 2),
                                   ),
                                 ),
-                                ...groups.map((g) {
-                                  final gId = g['id']?.toString();
-                                  final gName = g['name']?.toString() ?? 'Group';
-                                  final isSel = _selectedGroupId == gId;
-                                  return ChoiceChip(
-                                    label: Text(gName),
-                                    selected: isSel,
-                                    onSelected: (_) => setState(() => _selectedGroupId = gId),
-                                    selectedColor: const Color(0xFFE6F4EE),
-                                    labelStyle: TextStyle(
-                                      color: isSel ? primaryGreen : const Color(0xFF475569),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Monthly rent',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _monthlyRentController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: InputDecoration(
-                        prefixText: '₹ ',
-                        prefixStyle: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                        hintText: '0',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                            ],
+                          ),
                         ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGreen, width: 1.5),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Enter the monthly amount for this member.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                    ),
-
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Payment due day',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _dueDayController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: InputDecoration(
-                        hintText: '5',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGreen, width: 1.5),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Day of each month, from 1 to 31',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ],
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 14),
 
-              // Card 3: Additional details (Custom Fields)
+              // ================= SECTION 3: CUSTOM FIELDS =================
               if (_customFields.isNotEmpty) ...[
-                const SizedBox(height: 16),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFF1F5F9)),
+                    borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
+                        color: const Color(0xFF0F172A).withValues(alpha: 0.03),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -575,85 +622,54 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                     children: [
                       Row(
                         children: [
-                          const Text(
-                            'Additional details',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            width: 32,
+                            height: 32,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
+                              color: const Color(0xFFECEEF0),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Text(
-                              'Custom fields',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                            ),
+                            child: const Icon(Icons.tune_rounded, size: 18, color: primaryGreen),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            '3. Additional Facility Fields',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textPrimary),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Specific information defined by your facility',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                      ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
                       ..._customFields.map((field) {
                         final fName = field['fieldName']?.toString() ?? '';
                         final isReq = field['isRequired'] == true;
-                        final fType = field['fieldType']?.toString() ?? 'TEXT';
                         final controller = _customControllers[fName];
 
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.only(bottom: 12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    fName,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF334155),
-                                    ),
-                                  ),
+                                  Text(fName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
                                   if (isReq)
-                                    const Text(
-                                      ' *',
-                                      style: TextStyle(
-                                        color: Color(0xFFEF4444),
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                    const Text(' *', style: TextStyle(color: Color(0xFFBA1A1A), fontWeight: FontWeight.bold)),
                                 ],
                               ),
                               const SizedBox(height: 6),
                               TextField(
                                 controller: controller,
-                                keyboardType: fType == 'NUMBER'
-                                    ? TextInputType.number
-                                    : (fType == 'DATE' ? TextInputType.datetime : TextInputType.text),
-                                style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                                style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
                                 decoration: InputDecoration(
-                                  hintText: fType == 'DATE' ? 'YYYY-MM-DD' : 'Enter $fName',
+                                  hintText: 'Enter $fName',
                                   hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
                                   filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                  ),
+                                  fillColor: const Color(0xFFF2F4F6),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: primaryGreen, width: 1.5),
+                                    borderSide: const BorderSide(color: primaryGreen, width: 2),
                                   ),
                                 ),
                               ),
@@ -664,11 +680,10 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 20),
               ],
 
-              const SizedBox(height: 24),
-
-              // Save Member Button
+              // Save Action Button (Stitch design)
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -678,13 +693,13 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                     backgroundColor: primaryGreen,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(9999),
                     ),
                   ),
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
                       : const Text(
-                          'Save member',
+                          'Register Resident',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
@@ -693,6 +708,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                         ),
                 ),
               ),
+              const SizedBox(height: 30),
             ],
           ),
         ),

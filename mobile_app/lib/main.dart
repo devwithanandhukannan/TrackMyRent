@@ -4,36 +4,142 @@ import 'views/add_member_screen.dart';
 import 'views/app_plan_selection_screen.dart';
 import 'views/member_detail_screen.dart';
 import 'views/plan_detail_screen.dart';
+import 'views/group_detail_screen.dart';
 import 'views/settings_screen.dart';
 import 'views/login_screen.dart';
+import 'views/profile_completion_screen.dart';
 import 'services/api_service.dart';
+import 'utils/colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final isLoggedIn = await ApiService.isLoggedIn();
-  runApp(RentTrackApp(isLoggedIn: isLoggedIn));
+  final isProfileComplete = isLoggedIn ? await ApiService.isProfileCompleted() : false;
+  final session = isLoggedIn ? await ApiService.getSessionData() : <String, String?>{};
+
+  runApp(RentTrackApp(
+    isLoggedIn: isLoggedIn,
+    isProfileComplete: isProfileComplete,
+    userPhone: session['phone'] ?? '',
+    userName: session['userName'],
+    orgName: session['orgName'],
+  ));
 }
 
 class RentTrackApp extends StatelessWidget {
   final bool isLoggedIn;
-  const RentTrackApp({super.key, this.isLoggedIn = false});
+  final bool isProfileComplete;
+  final String userPhone;
+  final String? userName;
+  final String? orgName;
+
+  const RentTrackApp({
+    super.key,
+    this.isLoggedIn = false,
+    this.isProfileComplete = false,
+    this.userPhone = '',
+    this.userName,
+    this.orgName,
+  });
 
   @override
   Widget build(BuildContext context) {
+    Widget initialScreen;
+    if (!isLoggedIn) {
+      initialScreen = const LoginScreen();
+    } else if (!isProfileComplete) {
+      initialScreen = ProfileCompletionScreen(
+        phone: userPhone,
+        initialName: userName,
+        initialOrgName: orgName,
+      );
+    } else {
+      initialScreen = const MainNavigationScreen();
+    }
+
     return MaterialApp(
       title: 'RentTrack',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.light().copyWith(
-        scaffoldBackgroundColor: const Color(0xFFF8FAF9),
+        scaffoldBackgroundColor: AppColors.iosBackground,
         colorScheme: const ColorScheme.light(
-          primary: Color(0xFF059669),
-          secondary: Color(0xFF10B981),
+          primary: AppColors.primary,
+          secondary: AppColors.primaryLight,
           surface: Colors.white,
         ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0.5,
+          iconTheme: IconThemeData(color: AppColors.textPrimary),
+          titleTextStyle: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
       ),
-      home: isLoggedIn ? const MainNavigationScreen() : const LoginScreen(),
+      home: initialScreen,
     );
   }
+}
+
+// Global Apple-Style Dialog when subscription expires
+void showSubscriptionExpiredDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Row(
+        children: [
+          Icon(Icons.lock_clock_rounded, color: AppColors.appleRed),
+          SizedBox(width: 8),
+          Text(
+            'Subscription Expired',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.textPrimary),
+          ),
+        ],
+      ),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your account is in View-Only Mode.',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'All existing members, payments, and reports are safely viewable. To add new members, create plans, or record fees, please renew your subscription.\n\nNote: Any unused WhatsApp credits roll over automatically when you renew!',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Stay in View-Only', style: TextStyle(color: AppColors.textSecondary)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onPressed: () {
+            Navigator.pop(ctx);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AppPlanSelectionScreen()),
+            );
+          },
+          child: const Text('Renew / Upgrade Plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+      ],
+    ),
+  );
 }
 
 // Reusable Top Header bar present across Dashboard, Plan, Expense, Report
@@ -86,108 +192,120 @@ class RentTrackHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE6F4EE),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.apartment_rounded,
-                  color: Color(0xFF059669),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'RentTrack',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.5,
-                ),
+    return FutureBuilder<Map<String, String?>>(
+      future: ApiService.getSessionData(),
+      builder: (context, snapshot) {
+        final orgName = snapshot.data?['orgName'] ?? 'RentTrack';
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-          Row(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AppPlanSelectionScreen(),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.secondaryContainer.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.apartment_rounded,
+                        color: AppColors.primary,
+                        size: 22,
+                      ),
                     ),
-                  );
-                },
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE6F4EE),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.workspace_premium_outlined,
-                    color: Color(0xFF059669),
-                    size: 20,
-                  ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  orgName,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.onSurface,
+                                    letterSpacing: -0.3,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              const Icon(Icons.expand_more_rounded, size: 18, color: AppColors.onSurfaceVariant),
+                            ],
+                          ),
+                          const Text(
+                            'Property Management OS',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SettingsScreen(),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.workspace_premium_outlined, color: AppColors.primary, size: 22),
+                    tooltip: 'Subscription & Credits',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AppPlanSelectionScreen()),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: AppColors.onSurfaceVariant, size: 22),
+                    tooltip: 'Settings & Payout',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      );
+                    },
+                  ),
+                  GestureDetector(
+                    onTap: () => _showLogoutDialog(context),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.person, color: Colors.white, size: 18),
                     ),
-                  );
-                },
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE6F4EE),
-                    shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.settings_outlined,
-                    color: Color(0xFF059669),
-                    size: 20,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _showLogoutDialog(context),
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.logout_rounded,
-                    color: Colors.redAccent,
-                    size: 20,
-                  ),
-                ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -202,6 +320,8 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
+  bool _isSubscriptionExpired = false;
+  String _activePlanName = '';
 
   final List<Widget> _screens = [
     const HomeScreenView(),
@@ -211,15 +331,89 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _checkSubscriptionStatus();
+  }
+
+  Future<void> _checkSubscriptionStatus() async {
+    try {
+      final sub = await ApiService.fetchSubscriptionCredits();
+      if (mounted) {
+        setState(() {
+          _isSubscriptionExpired = sub['subscription']?['isExpired'] == true;
+          _activePlanName = sub['subscription']?['subscriptionName'] ?? '';
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
     const primaryGreen = Color(0xFF059669);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF9),
+      backgroundColor: AppColors.iosBackground,
       body: SafeArea(
         child: Column(
           children: [
             const RentTrackHeader(),
+
+            // Persistent Apple-Style View-Only Mode Banner if subscription is expired
+            if (_isSubscriptionExpired)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFF1F2),
+                  border: Border(
+                    bottom: BorderSide(color: Color(0xFFFECDD3), width: 1),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_clock_rounded, size: 18, color: AppColors.appleRed),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _activePlanName.isNotEmpty
+                            ? 'View-Only Mode • $_activePlanName Expired'
+                            : 'View-Only Mode • Subscription Expired',
+                        style: const TextStyle(
+                          color: AppColors.appleRed,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AppPlanSelectionScreen()),
+                        );
+                        _checkSubscriptionStatus();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.appleRed,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'Renew Plan',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             Expanded(child: _screens[_currentIndex]),
           ],
         ),
@@ -280,6 +474,7 @@ class _HomeScreenViewState extends State<HomeScreenView> {
   double _totalPending = 0;
   List<dynamic> _allMembers = [];
   String _activeFilter = 'ALL'; // ALL, PAID, UNPAID, FROZEN
+  Map<String, dynamic>? _subscriptionData;
 
   @override
   void initState() {
@@ -292,12 +487,14 @@ class _HomeScreenViewState extends State<HomeScreenView> {
     try {
       final summaryRes = await ApiService.fetchFinancialSummary();
       final membersList = await ApiService.fetchMembers();
+      final subData = await ApiService.fetchSubscriptionCredits();
 
       if (mounted) {
         setState(() {
           _totalCollected = (summaryRes['summary']?['totalIncome'] as num?)?.toDouble() ?? 0.0;
           _totalPending = (summaryRes['summary']?['totalPending'] as num?)?.toDouble() ?? 0.0;
           _allMembers = membersList;
+          _subscriptionData = subData;
           _isLoading = false;
         });
       }
@@ -309,6 +506,25 @@ class _HomeScreenViewState extends State<HomeScreenView> {
   }
 
   Future<void> _sendWhatsAppReminder(String phone, String name, dynamic amount) async {
+    final sub = await ApiService.fetchSubscriptionCredits();
+    if (sub['subscription']?['isExpired'] == true) {
+      if (mounted) showSubscriptionExpiredDialog(context);
+      return;
+    }
+
+    final available = sub['credits']?['availableCredits'] ?? 0;
+    if (available <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Insufficient WhatsApp credits. Please top-up in Settings.'),
+            backgroundColor: AppColors.appleAmber,
+          ),
+        );
+      }
+      return;
+    }
+
     final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
     final msg = Uri.encodeComponent('Hi $name, this is a friendly reminder regarding your pending fee of ₹$amount. Please clear it at your earliest convenience.');
     final uri = Uri.parse('https://wa.me/$cleanPhone?text=$msg');
@@ -318,10 +534,18 @@ class _HomeScreenViewState extends State<HomeScreenView> {
   }
 
   void _openAddMember() async {
+    final sub = await ApiService.fetchSubscriptionCredits();
+    if (!mounted) return;
+    if (sub['subscription']?['isExpired'] == true) {
+      showSubscriptionExpiredDialog(context);
+      return;
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const AddMemberScreen()),
     );
+    if (!mounted) return;
     if (result == true) {
       _loadDashboardData();
     }
@@ -329,150 +553,158 @@ class _HomeScreenViewState extends State<HomeScreenView> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF059669);
-
     final paidMembers = _allMembers.where((m) => m['status'] == 'PAID').toList();
     final unpaidMembers = _allMembers.where((m) => m['status'] == 'UNPAID').toList();
     final frozenMembers = _allMembers.where((m) => m['status'] == 'FROZEN').toList();
+    final overdueMembers = unpaidMembers;
+
+    final totalTarget = _totalCollected + _totalPending;
+    final percentCollected = totalTarget > 0 ? ((_totalCollected / totalTarget) * 100).toInt() : 100;
 
     List<dynamic> displayedMembers = _allMembers;
     if (_activeFilter == 'PAID') displayedMembers = paidMembers;
     if (_activeFilter == 'UNPAID') displayedMembers = unpaidMembers;
+    if (_activeFilter == 'OVERDUE') displayedMembers = overdueMembers;
     if (_activeFilter == 'FROZEN') displayedMembers = frozenMembers;
+
+    final subName = _subscriptionData?['subscription']?['subscriptionName'] ?? 'Active Plan';
+    final isTrial = subName.toLowerCase().contains('trial');
 
     return RefreshIndicator(
       onRefresh: _loadDashboardData,
-      color: primaryGreen,
+      color: AppColors.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title & Add Member Button
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Dashboard',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _openAddMember,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryGreen,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  icon: const Icon(Icons.add, size: 18, color: Colors.white),
-                  label: const Text(
-                    'Add member',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Month and year selector card
+            // Active Subscription Banner
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Month and year',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'September 2026',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ],
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
-                  Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryContainer.withValues(alpha: 0.4),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.verified_rounded, size: 16, color: AppColors.primary),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Text(
+                          subName,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.onSurface,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isTrial ? '• 2-Days Trial Mode' : '• Active Plan',
+                          style: const TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AppPlanSelectionScreen()),
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      backgroundColor: AppColors.surfaceContainerLow,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text(
+                      'Manage',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
-            // Metrics Rows (4 cards)
+            // 2x2 Metric KPI Bento Grid
             Row(
               children: [
-                // Card 1: All members
+                // Card 1: Active Members
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.people_outline_rounded,
-                                size: 18,
-                                color: Color(0xFF475569),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
                             const Text(
-                              'All members',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF334155),
+                              'Active Members',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            ),
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                color: AppColors.surfaceContainer,
+                                shape: BoxShape.circle,
                               ),
+                              child: const Icon(Icons.group_outlined, size: 16, color: AppColors.onSurfaceVariant),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Text(
                           '${_allMembers.length}',
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F172A),
-                          ),
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.onSurface),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(Icons.arrow_upward_rounded, size: 13, color: AppColors.primary),
+                            const SizedBox(width: 2),
+                            Text(
+                              '+${_allMembers.length} active',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -480,51 +712,57 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                 ),
                 const SizedBox(width: 12),
 
-                // Card 2: Total collected
+                // Card 2: Collected
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFDCFCE7),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.payments_outlined,
-                                size: 18,
-                                color: primaryGreen,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
                             const Text(
                               'Collected',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF334155),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            ),
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: AppColors.secondaryContainer.withValues(alpha: 0.4),
+                                shape: BoxShape.circle,
                               ),
+                              child: const Icon(Icons.payments_outlined, size: 16, color: AppColors.secondary),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Text(
                           '₹${_totalCollected.toInt()}',
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: primaryGreen,
-                          ),
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.primary),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(Icons.trending_up_rounded, size: 13, color: AppColors.primary),
+                            const SizedBox(width: 2),
+                            Text(
+                              '$percentCollected% of target',
+                              style: const TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -535,51 +773,51 @@ class _HomeScreenViewState extends State<HomeScreenView> {
             const SizedBox(height: 12),
             Row(
               children: [
-                // Card 3: Paid members
+                // Card 3: Pending Dues
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFDCFCE7),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.check_circle_outline_rounded,
-                                size: 18,
-                                color: primaryGreen,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
                             const Text(
-                              'Paid Members',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF334155),
+                              'Pending Dues',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            ),
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: AppColors.errorContainer.withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
                               ),
+                              child: const Icon(Icons.pending_actions_rounded, size: 16, color: AppColors.error),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Text(
-                          '${paidMembers.length}',
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: primaryGreen,
-                          ),
+                          '₹${_totalPending.toInt()}',
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.error),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${unpaidMembers.length} members unpaid',
+                          style: const TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -587,64 +825,72 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                 ),
                 const SizedBox(width: 12),
 
-                // Card 4: Unpaid dues
+                // Card 4: Overdue
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEE2E2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.error_outline_rounded,
-                                size: 18,
-                                color: Color(0xFFEF4444),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
                             const Text(
-                              'Pending Dues',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF334155),
+                              'Overdue',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            ),
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                color: AppColors.appleAmberBg,
+                                shape: BoxShape.circle,
                               ),
+                              child: const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.appleAmber),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Text(
-                              '₹${_totalPending.toInt()}',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFFEF4444),
-                              ),
+                              '${overdueMembers.length}',
+                              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.onSurface),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              '(${unpaidMembers.length})',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF94A3B8),
+                            if (overdueMembers.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.appleAmberBg,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Text(
+                                  'Action Needed',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.appleAmber),
+                                ),
                               ),
-                            ),
                           ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          overdueMembers.isEmpty ? 'All dues up to date' : 'Immediate attention',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: overdueMembers.isEmpty ? AppColors.primary : AppColors.appleAmber,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
@@ -652,300 +898,352 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
 
-            // QUICK ACTIONS Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // Filter Segmented Control (Stitch Pills)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
-                  const Text(
-                    'QUICK ACTIONS',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF64748B),
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 44,
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFE6F4EE),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text(
-                              'View members',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: primaryGreen,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: SizedBox(
-                          height: 44,
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFE6F4EE),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text(
-                              'Open payments',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: primaryGreen,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _buildStitchFilterPill('All', _allMembers.length, 'ALL'),
+                  const SizedBox(width: 8),
+                  _buildStitchFilterPill('Paid', paidMembers.length, 'PAID'),
+                  const SizedBox(width: 8),
+                  _buildStitchFilterPill('Pending', unpaidMembers.length, 'UNPAID'),
+                  const SizedBox(width: 8),
+                  _buildStitchFilterPill('Overdue', overdueMembers.length, 'OVERDUE'),
+                  const SizedBox(width: 8),
+                  _buildStitchFilterPill('Frozen ❄️', frozenMembers.length, 'FROZEN'),
                 ],
               ),
             ),
             const SizedBox(height: 16),
 
-            // Members List Section
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_allMembers.length} Members',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
+            // Member Roster Header & Add Button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${displayedMembers.length} Residents & Members',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.onSurface,
                   ),
-                  const SizedBox(height: 12),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _openAddMember,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add Member', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
 
-                  // Filter Pills
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildFilterPill('All (${_allMembers.length})', 'ALL', primaryGreen),
-                        const SizedBox(width: 8),
-                        _buildFilterPill('Paid (${paidMembers.length})', 'PAID', primaryGreen),
-                        const SizedBox(width: 8),
-                        _buildFilterPill('Unpaid (${unpaidMembers.length})', 'UNPAID', const Color(0xFFEF4444)),
-                        const SizedBox(width: 8),
-                        _buildFilterPill('Frozen (${frozenMembers.length}) ❄️', 'FROZEN', const Color(0xFF0284C7)),
+            // Members List or Empty State
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+              )
+            else if (displayedMembers.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: const BoxDecoration(
+                        color: AppColors.surfaceContainer,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.person_outline_rounded, size: 28, color: AppColors.outline),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No members found',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.onSurface),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Tap "Add Member" above to onboard your first resident or customer.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...displayedMembers.map((m) {
+                final name = m['fullName'] ?? 'Member';
+                final phone = m['phone'] ?? '';
+                final status = m['status'] ?? 'PAID';
+                final amount = (m['amount'] as num?)?.toDouble() ?? (m['plan']?['price'] as num?)?.toDouble() ?? 0.0;
+                final planName = m['plan']?['name'] ?? m['group']?['name'] ?? 'Plan';
+                final isPaid = status == 'PAID';
+                final isFrozen = status == 'FROZEN';
+
+                // Compute initials
+                final parts = name.trim().split(' ');
+                final initials = parts.length > 1
+                    ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
+                    : name.isNotEmpty ? name[0].toUpperCase() : 'M';
+
+                return GestureDetector(
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => MemberDetailScreen(member: m)),
+                    );
+                    _loadDashboardData();
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // List of members or empty message
-                  if (_isLoading)
-                    const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: primaryGreen)))
-                  else if (displayedMembers.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text(
-                          'No members in this view.',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    ...displayedMembers.map((m) {
-                      final name = m['fullName'] ?? 'Member';
-                      final phone = m['phone'] ?? '';
-                      final status = m['status'] ?? 'PAID';
-                      final amount = m['amount'] ?? 0;
-                      final isPaid = status == 'PAID';
-                      final isFrozen = status == 'FROZEN';
-
-                      Color badgeBg;
-                      Color badgeText;
-                      String statusLabel;
-                      if (isPaid) {
-                        badgeBg = const Color(0xFFDCFCE7);
-                        badgeText = const Color(0xFF166534);
-                        statusLabel = 'PAID';
-                      } else if (isFrozen) {
-                        badgeBg = const Color(0xFFE0F2FE);
-                        badgeText = const Color(0xFF0284C7);
-                        statusLabel = '❄️ FROZEN';
-                      } else {
-                        badgeBg = const Color(0xFFFEE2E2);
-                        badgeText = const Color(0xFF991B1B);
-                        statusLabel = 'UNPAID';
-                      }
-
-                      return GestureDetector(
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => MemberDetailScreen(member: m),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            // Avatar with Initials
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.secondaryContainer.withValues(alpha: 0.45),
+                                shape: BoxShape.circle,
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                initials,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primary,
+                                ),
+                              ),
                             ),
-                          );
-                          _loadDashboardData();
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isFrozen ? const Color(0xFFF0F9FF) : const Color(0xFFF8FAF9),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isFrozen
-                                  ? const Color(0xFFBAE6FD)
-                                  : status == 'UNPAID'
-                                      ? const Color(0xFFFECACA)
-                                      : const Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
+                            const SizedBox(width: 12),
+
+                            // Name, Subtitle, Phone
+                            Expanded(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     name,
                                     style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.onSurface,
                                     ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 2),
-                                  Text(
-                                    phone,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  if (!isPaid && !isFrozen && phone.isNotEmpty)
-                                    IconButton(
-                                      icon: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF25D366), size: 18),
-                                      tooltip: 'Send WhatsApp Reminder',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      onPressed: () => _sendWhatsAppReminder(phone, name, amount),
-                                    ),
-                                  if (!isPaid && !isFrozen && phone.isNotEmpty)
-                                    const SizedBox(width: 8),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                  Row(
                                     children: [
-                                      Text(
-                                        '₹$amount',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w900,
-                                          color: isPaid ? primaryGreen : const Color(0xFF0F172A),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: badgeBg,
+                                          color: AppColors.surfaceContainerLow,
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(
-                                          statusLabel,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                            color: badgeText,
-                                          ),
+                                          planName,
+                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
                                         ),
                                       ),
+                                      if (phone.isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          phone,
+                                          style: const TextStyle(fontSize: 11, color: AppColors.outline),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ],
                               ),
+                            ),
+
+                            // Amount & Status Badge
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '₹${amount.toInt()}',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: isPaid ? AppColors.primary : AppColors.error,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isPaid
+                                        ? AppColors.appleGreenBg
+                                        : isFrozen
+                                            ? AppColors.surfaceContainer
+                                            : AppColors.appleRedBg,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    status,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: isPaid
+                                          ? AppColors.primary
+                                          : isFrozen
+                                              ? AppColors.onSurfaceVariant
+                                              : AppColors.appleRed,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+
+                        // Quick Action Footer (Call & WhatsApp)
+                        if (phone.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Divider(height: 1, color: AppColors.surfaceContainer),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              GestureDetector(
+                                onTap: () async {
+                                  final uri = Uri.parse('tel:$phone');
+                                  if (await canLaunchUrl(uri)) await launchUrl(uri);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceContainerLow,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.phone_outlined, size: 13, color: AppColors.onSurfaceVariant),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Call',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _sendWhatsAppReminder(phone, name, amount),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.chat_outlined, size: 13, color: Colors.white),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'WhatsApp',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                      );
-                    }),
-                ],
-              ),
-            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFilterPill(String label, String code, Color primaryGreen) {
+  Widget _buildStitchFilterPill(String label, int count, String code) {
     final isSelected = _activeFilter == code;
 
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _activeFilter = code;
-        });
-      },
+      onTap: () => setState(() => _activeFilter = code),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE6F4EE) : Colors.white,
+          color: isSelected ? AppColors.primary : Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? primaryGreen : const Color(0xFFCBD5E1),
-            width: isSelected ? 1.5 : 1,
-          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 4,
+            ),
+          ],
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: isSelected ? primaryGreen : const Color(0xFF475569),
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                color: isSelected ? Colors.white : AppColors.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white.withValues(alpha: 0.25) : AppColors.surfaceContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: isSelected ? Colors.white : AppColors.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -992,7 +1290,14 @@ class _PlansScreenViewState extends State<PlansScreenView> {
     }
   }
 
-  void _openAddPlanDialog() {
+  void _openAddPlanDialog() async {
+    final sub = await ApiService.fetchSubscriptionCredits();
+    if (!mounted) return;
+    if (sub['subscription']?['isExpired'] == true) {
+      showSubscriptionExpiredDialog(context);
+      return;
+    }
+
     final nameController = TextEditingController();
     final priceController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -1144,244 +1449,690 @@ class _PlansScreenViewState extends State<PlansScreenView> {
     );
   }
 
+  String _selectedPlanFilter = 'ALL';
+
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF059669);
+    const primaryGreen = Color(0xFF006948);
+    const secondaryContainer = Color(0xFF6CF8BB);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Plans',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: _openAddPlanDialog,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryGreen,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                icon: const Icon(Icons.add, size: 18, color: Colors.white),
-                label: const Text(
-                  'Add new plan',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+    // Dynamic calculations from real plans data
+    final activePlans = _plans.where((p) => p['isActive'] != false).toList();
+    final inactivePlans = _plans.where((p) => p['isActive'] == false).toList();
 
-          if (_isLoading)
-            const Padding(padding: EdgeInsets.all(30), child: Center(child: CircularProgressIndicator(color: primaryGreen)))
-          else if (_plans.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.assignment_outlined, size: 48, color: Color(0xFF94A3B8)),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'No Plans Found',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Tap "Add new plan" above to create your first membership or rent plan.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryGreen,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                    label: const Text('Add new plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    onPressed: _openAddPlanDialog,
-                  ),
-                ],
-              ),
-            )
-          else
-            ..._plans.map((plan) {
-              final name = plan['name'] ?? 'Plan';
-              final price = (plan['price'] as num?)?.toInt() ?? 0;
-              final membersCount = plan['totalMembers'] ?? plan['membersCount'] ?? 0;
-              final isActive = plan['isActive'] ?? true;
-              final billing = plan['billing'] ?? '${plan['durationDays'] ?? 30} Days billing';
+    int totalRooms = 0;
+    int totalOccupiedBeds = 0;
+    int totalCapacityBeds = 0;
+    double monthlyRunTotal = 0.0;
 
-              final groupsCount = plan['groupsCount'] ?? (plan['groups'] as List?)?.length ?? 0;
+    for (var p in _plans) {
+      final price = (p['price'] as num?)?.toDouble() ?? 0.0;
+      final int members = ((p['totalMembers'] ?? p['membersCount']) as num?)?.toInt() ?? 0;
+      final groups = (p['groups'] as List?) ?? [];
+      final int gCount = (p['groupsCount'] as num?)?.toInt() ?? groups.length;
+      totalRooms += gCount;
+      totalOccupiedBeds += members;
 
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PlanDetailScreen(plan: plan),
-                    ),
-                  ).then((_) => _loadPlans());
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
+      int planCap = 0;
+      for (var g in groups) {
+        final int cap = (g['capacity'] as num?)?.toInt() ?? 0;
+        planCap += cap;
+      }
+      totalCapacityBeds += (planCap > members ? planCap : members);
+      monthlyRunTotal += (price * members);
+    }
+
+    if (totalCapacityBeds < totalOccupiedBeds) totalCapacityBeds = totalOccupiedBeds;
+    final occupancyPercent = totalCapacityBeds > 0
+        ? ((totalOccupiedBeds / totalCapacityBeds) * 100).round()
+        : 0;
+    final availableBeds = (totalCapacityBeds - totalOccupiedBeds).clamp(0, 999999);
+
+    final filteredPlans = _selectedPlanFilter == 'ACTIVE'
+        ? activePlans
+        : _selectedPlanFilter == 'INACTIVE'
+            ? inactivePlans
+            : _plans;
+
+    return RefreshIndicator(
+      onRefresh: _loadPlans,
+      color: primaryGreen,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Screen Header & Top Action (Matching Stitch plans_batches.html)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE6F4EE),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(
-                                  Icons.assignment_outlined,
-                                  size: 20,
-                                  color: primaryGreen,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    billing,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isActive ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              isActive ? 'Active' : 'Inactive',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: isActive ? const Color(0xFF166534) : const Color(0xFF64748B),
-                              ),
-                            ),
-                          ),
-                        ],
+                      Text(
+                        'Plans & Rooms',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF191C1E),
+                          letterSpacing: -0.5,
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '₹${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.people_outline_rounded,
-                                size: 16,
-                                color: Color(0xFF64748B),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$membersCount members',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              if (groupsCount > 0) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '$groupsCount groups',
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(width: 8),
-                              Container(
-                                width: 24,
-                                height: 24,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFF8FAF9),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 18,
-                                  color: Color(0xFF94A3B8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                      SizedBox(height: 2),
+                      Text(
+                        'Configure tariffs, batches & bed allocations',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF3D4A42),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              );
-            }),
-        ],
+                ElevatedButton.icon(
+                  onPressed: _openAddPlanDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(9999),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add, size: 18, color: Colors.white),
+                  label: const Text(
+                    'New Plan',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Overall Capacity & KPI Summary Card (Stitch design)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: secondaryContainer,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.analytics_outlined,
+                              size: 18,
+                              color: Color(0xFF00714D),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Campus Occupancy',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF191C1E),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF85F8C4).withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(9999),
+                        ),
+                        child: Text(
+                          '$occupancyPercent% Full',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: primaryGreen,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Progress Bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(9999),
+                    child: Container(
+                      height: 10,
+                      width: double.infinity,
+                      color: const Color(0xFFE0E3E5),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: (occupancyPercent / 100.0).clamp(0.0, 1.0),
+                        child: Container(color: primaryGreen),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '$totalOccupiedBeds Beds Occupied',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF3D4A42),
+                        ),
+                      ),
+                      Text(
+                        '$availableBeds Beds Available',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF191C1E),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  // Quick Micro Stats Strip
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF2F4F6),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                '${activePlans.length}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF191C1E),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Active Plans',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF3D4A42),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF2F4F6),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                '$totalRooms',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF191C1E),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Total Rooms',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF3D4A42),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF2F4F6),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                monthlyRunTotal >= 100000
+                                    ? '₹${(monthlyRunTotal / 100000).toStringAsFixed(1)}L'
+                                    : '₹${(monthlyRunTotal / 1000).toStringAsFixed(0)}K',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: primaryGreen,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Monthly Run',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF3D4A42),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Stitch Segmented Filter Control
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECEEF0),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    _buildFilterChip('ALL', 'All Plans (${_plans.length})'),
+                    _buildFilterChip('ACTIVE', 'Active (${activePlans.length})'),
+                    _buildFilterChip('INACTIVE', 'Inactive (${inactivePlans.length})'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.all(36),
+                child: Center(child: CircularProgressIndicator(color: primaryGreen)),
+              )
+            else if (_plans.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F4F6),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(Icons.assignment_outlined, size: 28, color: Color(0xFF6D7A72)),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'No Plans Created Yet',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF191C1E)),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Tap "New Plan" above to configure rent tariffs and allocate member rooms.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: Color(0xFF3D4A42)),
+                    ),
+                    const SizedBox(height: 18),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryGreen,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9999)),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      ),
+                      icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                      label: const Text('Create First Plan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      onPressed: _openAddPlanDialog,
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...filteredPlans.map((plan) {
+                final name = plan['name'] ?? 'Plan';
+                final price = (plan['price'] as num?)?.toInt() ?? 0;
+                final membersCount = (plan['totalMembers'] ?? plan['membersCount'] as num?)?.toInt() ?? 0;
+                final isActive = plan['isActive'] ?? true;
+                final durationDays = plan['durationDays'] ?? 30;
+                final groups = (plan['groups'] as List?) ?? [];
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F172A).withValues(alpha: 0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(18),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PlanDetailScreen(plan: plan),
+                          ),
+                        ).then((_) => _loadPlans());
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Plan Card Header
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 8,
+                                            height: 8,
+                                            decoration: BoxDecoration(
+                                              color: isActive ? primaryGreen : const Color(0xFF6D7A72),
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              name,
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF191C1E),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                                        textBaseline: TextBaseline.alphabetic,
+                                        children: [
+                                          Text(
+                                            '₹${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}',
+                                            style: const TextStyle(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w900,
+                                              color: primaryGreen,
+                                              letterSpacing: -0.5,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '/ ${durationDays}d per bed',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                              color: Color(0xFF3D4A42),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isActive ? const Color(0xFF85F8C4).withValues(alpha: 0.3) : const Color(0xFFECEEF0),
+                                    borderRadius: BorderRadius.circular(9999),
+                                  ),
+                                  child: Text(
+                                    isActive ? 'ACTIVE' : 'INACTIVE',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: isActive ? primaryGreen : const Color(0xFF3D4A42),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+
+                            // Cycle Meta Pills (Stitch design)
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF2F4F6),
+                                    borderRadius: BorderRadius.circular(9999),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.event_repeat, size: 13, color: Color(0xFF3D4A42)),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Cycle: $durationDays Days',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF3D4A42)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: secondaryContainer.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(9999),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.chat_bubble_outline, size: 13, color: Color(0xFF00714D)),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'WhatsApp Due -3d',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF00714D)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF2F4F6),
+                                    borderRadius: BorderRadius.circular(9999),
+                                  ),
+                                  child: Text(
+                                    '$membersCount Members',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF3D4A42)),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Sub-rooms / Batches accordion (if groups exist)
+                            if (groups.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              const Divider(height: 1, color: Color(0xFFECEEF0)),
+                              const SizedBox(height: 10),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Assigned Rooms (${groups.length} Rooms)',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF191C1E),
+                                    ),
+                                  ),
+                                  const Text(
+                                    'View all →',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: primaryGreen,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              // Mini room chips
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: groups.take(4).map((g) {
+                                  final gName = g['name'] ?? 'Room';
+                                  final gCap = g['capacity'] != null ? '${g['capacity']} beds' : 'Standard';
+                                  return InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => GroupDetailScreen(
+                                            group: {
+                                              ...g,
+                                              'planName': name,
+                                            },
+                                            onUpdate: _loadPlans,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF2F4F6),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.meeting_room_outlined, size: 14, color: primaryGreen),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            gName,
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF191C1E)),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '• $gCap',
+                                            style: const TextStyle(fontSize: 10, color: Color(0xFF3D4A42)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String key, String label) {
+    final isSelected = _selectedPlanFilter == key;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPlanFilter = key),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected ? const Color(0xFF191C1E) : const Color(0xFF3D4A42),
+          ),
+        ),
       ),
     );
   }
@@ -1427,7 +2178,14 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
     }
   }
 
-  void _openAddExpenseDialog() {
+  void _openAddExpenseDialog() async {
+    final sub = await ApiService.fetchSubscriptionCredits();
+    if (!mounted) return;
+    if (sub['subscription']?['isExpired'] == true) {
+      showSubscriptionExpiredDialog(context);
+      return;
+    }
+
     final titleController = TextEditingController();
     final amountController = TextEditingController();
     String? selectedCategoryId = _categories.isNotEmpty ? _categories.first['id']?.toString() : null;
@@ -1671,9 +2429,13 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
       categoryTotals[catName] = (categoryTotals[catName] ?? 0) + amt;
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
+    return RefreshIndicator(
+      onRefresh: _loadExpenses,
+      color: primaryGreen,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -1917,6 +2679,7 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
             }),
         ],
       ),
+    ),
     );
   }
 }
@@ -1987,9 +2750,13 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
     final netBalance = _income - _expenses;
     final totalExpected = _income + _pending;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
+    return RefreshIndicator(
+      onRefresh: _loadReport,
+      color: primaryGreen,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -2397,6 +3164,7 @@ class _ReportsScreenViewState extends State<ReportsScreenView> {
           ],
         ],
       ),
+    ),
     );
   }
 

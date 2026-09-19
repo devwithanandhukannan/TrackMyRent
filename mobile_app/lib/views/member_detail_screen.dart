@@ -19,6 +19,14 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
   List<dynamic> _unpaidSchedules = [];
   List<dynamic> _frozenSchedules = [];
 
+  static const primaryGreen = Color(0xFF006948);
+  static const secondaryContainer = Color(0xFF6CF8BB);
+  static const onSecondaryContainer = Color(0xFF00714D);
+  static const surfaceBg = Color(0xFFF7F9FB);
+  static const textPrimary = Color(0xFF191C1E);
+  static const textSecondary = Color(0xFF3D4A42);
+  static const errorRed = Color(0xFFBA1A1A);
+
   @override
   void initState() {
     super.initState();
@@ -49,7 +57,8 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
   }
 
   Future<void> _makePhoneCall(String phone) async {
-    final Uri url = Uri.parse('tel:$phone');
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    final Uri url = Uri.parse('tel:$cleanPhone');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     }
@@ -71,7 +80,7 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
       final action = await showDialog<PaymentConfirmationAction>(
         context: context,
         builder: (ctx) => PaymentConfirmationDialog(
-          memberName: _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Member',
+          memberName: _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident',
           amount: amount,
           monthYear: schedule['monthYear'] ?? 'Current Month',
         ),
@@ -79,7 +88,7 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
 
       if (action == PaymentConfirmationAction.sendInvoice || action == PaymentConfirmationAction.sendPersonalMessage) {
         final phone = _memberDetails?['phone'] ?? widget.member['phone'] ?? '';
-        final name = _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Member';
+        final name = _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident';
         final msg = 'Hi $name, thank you for your payment of ₹${amount.toInt()} for ${schedule['monthYear']}.';
         await _openWhatsApp(phone, msg);
       }
@@ -89,7 +98,7 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
   }
 
   Future<void> _handleMarkUnpaid(dynamic schedule) async {
-    final memberName = _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Member';
+    final memberName = _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident';
     final confirm = await PaymentConfirmationDialog.showUnpaidWarningModal(context, memberName);
     if (confirm == true) {
       await ApiService.markAsUnpaid(schedule['id'], confirmed: true);
@@ -101,7 +110,7 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
     final success = await ApiService.freezeMonth(schedule['id']);
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Month frozen successfully. Excluded from pending dues.')),
+        const SnackBar(content: Text('Month frozen. Excluded from pending dues.')),
       );
       await _loadMemberData();
     }
@@ -119,291 +128,497 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF059669);
     final member = _memberDetails ?? widget.member;
-    final name = member['fullName'] ?? 'Unknown';
+    final name = member['fullName'] ?? 'Resident Profile';
     final phone = member['phone'] ?? '';
-    final planName = member['plan']?['name'] ?? member['duration'] ?? 'Standard Plan';
-    final groupName = member['group']?['name'] ?? 'No Group';
+    final planName = member['plan']?['name'] ?? member['duration'] ?? 'Standard Accommodation';
+    final groupName = member['group']?['name'] ?? '';
     final joiningDate = member['joiningDate'] != null
         ? DateTime.parse(member['joiningDate'].toString()).toString().split(' ')[0]
-        : 'N/A';
+        : 'Active';
+
+    final initials = name.trim().split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join('').toUpperCase();
+
+    // Financial calculations from real schedules
+    double totalPaidAmount = 0.0;
+    for (var s in _paidSchedules) {
+      totalPaidAmount += (s['amount'] as num?)?.toDouble() ?? 0.0;
+    }
+    double totalUnpaidAmount = 0.0;
+    for (var s in _unpaidSchedules) {
+      totalUnpaidAmount += (s['amount'] as num?)?.toDouble() ?? 0.0;
+    }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF9),
+      backgroundColor: surfaceBg,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0.5,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: textPrimary, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          name,
-          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 18),
+        title: const Text(
+          'Tenant Profile',
+          style: TextStyle(color: textPrimary, fontWeight: FontWeight.w800, fontSize: 18),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_rounded, color: primaryGreen),
-            onPressed: () {
-              // Edit member action
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Edit member feature ready')),
-              );
-            },
+            icon: const Icon(Icons.refresh_rounded, color: primaryGreen),
+            onPressed: _loadMemberData,
+            tooltip: 'Refresh Ledger',
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Personal Information Card
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    color: Colors.white,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
+          ? const Center(child: CircularProgressIndicator(color: primaryGreen))
+          : RefreshIndicator(
+              onRefresh: _loadMemberData,
+              color: primaryGreen,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Profile Header Bento Card (Stitch member_detail.html)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0F172A).withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Personal Information',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A)),
+                              CircleAvatar(
+                                radius: 28,
+                                backgroundColor: secondaryContainer,
+                                child: Text(
+                                  initials.isNotEmpty ? initials : 'R',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 18,
+                                    color: onSecondaryContainer,
+                                  ),
+                                ),
                               ),
-                              Row(
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.phone_rounded, color: Color(0xFF0284C7)),
-                                    onPressed: () => _makePhoneCall(phone),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.chat_rounded, color: Color(0xFF10B981)),
-                                    onPressed: () => _openWhatsApp(phone, 'Hi $name, regarding your RentTrack account:'),
-                                  ),
-                                ],
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            name,
+                                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: textPrimary),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFECEEF0),
+                                            borderRadius: BorderRadius.circular(9999),
+                                          ),
+                                          child: const Text(
+                                            'Active',
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: textSecondary),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      phone.isNotEmpty ? '+91 $phone' : 'No phone',
+                                      style: const TextStyle(fontSize: 13, color: textSecondary),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: [
+                                        if (groupName.isNotEmpty)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF2F4F6),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(Icons.meeting_room_outlined, size: 12, color: primaryGreen),
+                                                const SizedBox(width: 4),
+                                                Text(groupName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textPrimary)),
+                                              ],
+                                            ),
+                                          ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF2F4F6),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(planName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textSecondary)),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF2F4F6),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text('Since $joiningDate', style: const TextStyle(fontSize: 11, color: textSecondary)),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                          const Divider(),
-                          _buildInfoRow('Full Name', name),
-                          _buildInfoRow('Phone Number', phone),
-                          if (member['dateOfBirth'] != null)
-                            _buildInfoRow('Date of Birth', member['dateOfBirth'].toString().split('T')[0]),
-                          if (member['notes'] != null && member['notes'].toString().isNotEmpty)
-                            _buildInfoRow('Notes', member['notes']),
-                          // Custom fields rendering
-                          if (member['customFieldsData'] != null && member['customFieldsData'] is Map) ...[
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Custom Fields',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF64748B)),
-                            ),
-                            const SizedBox(height: 4),
-                            ...(member['customFieldsData'] as Map).entries.map(
-                                  (e) => _buildInfoRow(e.key.toString(), e.value.toString()),
+                          const SizedBox(height: 14),
+
+                          // Quick Call / WhatsApp Action Row
+                          if (phone.isNotEmpty)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFFE0E3E5)),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                    ),
+                                    icon: const Icon(Icons.phone_outlined, size: 16, color: textSecondary),
+                                    label: Text('Call $name', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary)),
+                                    onPressed: () => _makePhoneCall(phone),
+                                  ),
                                 ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryGreen,
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                    ),
+                                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Colors.white),
+                                    label: const Text('WhatsApp', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+                                    onPressed: () => _openWhatsApp(phone, 'Hi $name, regarding your rent dues with RentTrack:'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          const SizedBox(height: 14),
 
-                  const SizedBox(height: 16),
-
-                  // Membership Information Card
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    color: Colors.white,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Membership Information',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A)),
+                          // Financial Snapshot Bento Cells (Stitch member_detail.html)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF2F4F6),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Total Received', style: TextStyle(fontSize: 11, color: textSecondary)),
+                                          Icon(Icons.verified_rounded, size: 14, color: primaryGreen),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '₹${totalPaidAmount.toInt()}',
+                                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: primaryGreen),
+                                      ),
+                                      Text(
+                                        '${_paidSchedules.length} cycles cleared',
+                                        style: const TextStyle(fontSize: 10, color: textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF2F4F6),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Current Balance', style: TextStyle(fontSize: 11, color: textSecondary)),
+                                          Icon(Icons.account_balance_wallet_outlined, size: 14, color: Color(0xFF6D7A72)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '₹${totalUnpaidAmount.toInt()}',
+                                        style: TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w900,
+                                          color: totalUnpaidAmount > 0 ? errorRed : textPrimary,
+                                        ),
+                                      ),
+                                      Text(
+                                        totalUnpaidAmount > 0 ? '${_unpaidSchedules.length} cycles pending' : 'All Dues Cleared',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: totalUnpaidAmount > 0 ? errorRed : primaryGreen,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const Divider(),
-                          _buildInfoRow('Plan', planName),
-                          _buildInfoRow('Batch / Group', groupName),
-                          _buildInfoRow('Join Date', joiningDate),
-                          _buildInfoRow('Duration', member['duration'] ?? 'Monthly'),
                         ],
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
 
-                  const SizedBox(height: 24),
-
-                  // Payment History Header
-                  const Text(
-                    'Payment History',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A)),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Unpaid History Section
-                  if (_unpaidSchedules.isNotEmpty) ...[
-                    const Row(
+                    // Ledger Header Bar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
-                        SizedBox(width: 6),
-                        Text(
-                          'Unpaid History',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.redAccent),
+                        const Row(
+                          children: [
+                            Icon(Icons.receipt_long_rounded, size: 18, color: primaryGreen),
+                            SizedBox(width: 6),
+                            Text(
+                              'Payment Schedules',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textPrimary),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFECEEF0)),
+                          ),
+                          child: const Text(
+                            'All Cycles',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textSecondary),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    ..._unpaidSchedules.map((s) => _buildScheduleTile(s, status: 'UNPAID')),
-                    const SizedBox(height: 16),
-                  ],
+                    const SizedBox(height: 12),
 
-                  // Frozen History Section
-                  if (_frozenSchedules.isNotEmpty) ...[
-                    const Row(
-                      children: [
-                        Icon(Icons.ac_unit_rounded, color: Color(0xFF0284C7), size: 20),
-                        SizedBox(width: 6),
-                        Text(
-                          'Frozen History',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0284C7)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ..._frozenSchedules.map((s) => _buildScheduleTile(s, status: 'FROZEN')),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Paid History Section
-                  const Row(
-                    children: [
-                      Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 20),
-                      SizedBox(width: 6),
-                      Text(
-                        'Paid History',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF10B981)),
-                      ),
+                    // Unpaid Schedules (Stitch card with red left stripe)
+                    if (_unpaidSchedules.isNotEmpty) ...[
+                      ..._unpaidSchedules.map((s) => _buildScheduleCard(s, status: 'UNPAID')),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (_paidSchedules.isEmpty)
-                    const Text('No paid history yet.', style: TextStyle(color: Color(0xFF94A3B8))),
-                  ..._paidSchedules.map((s) => _buildScheduleTile(s, status: 'PAID')),
-                ],
+
+                    // Frozen Schedules (Stitch card with icy blue left stripe)
+                    if (_frozenSchedules.isNotEmpty) ...[
+                      ..._frozenSchedules.map((s) => _buildScheduleCard(s, status: 'FROZEN')),
+                    ],
+
+                    // Paid Schedules (Stitch card with emerald left stripe)
+                    if (_paidSchedules.isNotEmpty) ...[
+                      ..._paidSchedules.map((s) => _buildScheduleCard(s, status: 'PAID')),
+                    ],
+
+                    if (_unpaidSchedules.isEmpty && _paidSchedules.isEmpty && _frozenSchedules.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'No payment cycles recorded yet.',
+                            style: TextStyle(color: textSecondary, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 30),
+                  ],
+                ),
               ),
             ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 14)),
-          Text(value, style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600, fontSize: 14)),
+  Widget _buildScheduleCard(dynamic schedule, {required String status}) {
+    final amount = (schedule['amount'] as num?)?.toInt() ?? 0;
+    final monthYear = schedule['monthYear'] ?? 'Billing Cycle';
+    final isPaid = status == 'PAID';
+    final isFrozen = status == 'FROZEN';
+
+    final stripeColor = isPaid ? primaryGreen : (isFrozen ? const Color(0xFF0284C7) : errorRed);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border(left: BorderSide(color: stripeColor, width: 4)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _buildScheduleTile(dynamic schedule, {required String status}) {
-    final amount = (schedule['amount'] as num?)?.toDouble() ?? 0.0;
-    final monthYear = schedule['monthYear'] ?? 'Month';
-    final id = schedule['id']?.toString().substring(0, 8) ?? '';
-
-    Color badgeColor;
-    String badgeText;
-
-    if (status == 'PAID') {
-      badgeColor = const Color(0xFF10B981);
-      badgeText = 'PAID';
-    } else if (status == 'FROZEN') {
-      badgeColor = const Color(0xFF0284C7);
-      badgeText = 'FROZEN ❄️';
-    } else {
-      badgeColor = Colors.redAccent;
-      badgeText = 'UNPAID';
-    }
-
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      child: ListTile(
-        title: Row(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(monthYear, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: badgeColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                badgeText,
-                style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 11),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      monthYear,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textPrimary),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isPaid
+                            ? secondaryContainer
+                            : (isFrozen ? const Color(0xFFE0F2FE) : const Color(0xFFFFDAD6)),
+                        borderRadius: BorderRadius.circular(9999),
+                      ),
+                      child: Text(
+                        isPaid ? 'PAID' : (isFrozen ? 'FROZEN' : 'UNPAID'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: isPaid ? onSecondaryContainer : (isFrozen ? const Color(0xFF0284C7) : errorRed),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  '₹$amount',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: isPaid ? primaryGreen : (isFrozen ? const Color(0xFF0284C7) : textPrimary),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        subtitle: Text('ID: #$id • Amount: ₹${amount.toInt()}'),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (status == 'UNPAID') ...[
-              IconButton(
-                icon: const Icon(Icons.ac_unit_rounded, color: Color(0xFF0284C7), size: 20),
-                tooltip: 'Freeze Month',
-                onPressed: () => _handleFreeze(schedule),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () => _handleMarkPaid(schedule),
-                child: const Text('Mark Paid', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-              ),
-            ] else if (status == 'FROZEN') ...[
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF0284C7)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                ),
-                icon: const Icon(Icons.wb_sunny_rounded, color: Color(0xFF0284C7), size: 16),
-                label: const Text('Unfreeze', style: TextStyle(color: Color(0xFF0284C7), fontSize: 12)),
-                onPressed: () => _handleUnfreeze(schedule),
-              ),
-            ] else if (status == 'PAID') ...[
-              TextButton(
-                onPressed: () => _handleMarkUnpaid(schedule),
-                child: const Text('Mark Unpaid', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-              ),
-            ],
+            const SizedBox(height: 4),
+            Text(
+              isPaid ? 'Paid via Direct UPI' : (isFrozen ? 'Excluded from active dues' : 'Due for collection'),
+              style: TextStyle(fontSize: 11, color: isPaid ? textSecondary : (isFrozen ? const Color(0xFF0284C7) : errorRed)),
+            ),
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFFECEEF0)),
+            const SizedBox(height: 10),
+
+            // Actions Row (Stitch buttons)
+            Row(
+              children: [
+                if (!isPaid && !isFrozen) ...[
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryGreen,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                      icon: const Icon(Icons.check_circle, size: 16, color: Colors.white),
+                      label: const Text('Mark Paid', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                      onPressed: () => _handleMarkPaid(schedule),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE0E3E5)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.ac_unit_rounded, size: 14, color: Color(0xFF0284C7)),
+                    label: const Text('Freeze', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0284C7))),
+                    onPressed: () => _handleFreeze(schedule),
+                  ),
+                ] else if (isFrozen) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFF0284C7)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                      icon: const Icon(Icons.wb_sunny_rounded, size: 16, color: Color(0xFF0284C7)),
+                      label: const Text('Unfreeze Back to Unpaid', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0284C7))),
+                      onPressed: () => _handleUnfreeze(schedule),
+                    ),
+                  ),
+                ] else if (isPaid) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFE0E3E5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                      icon: const Icon(Icons.description_outlined, size: 14, color: primaryGreen),
+                      label: const Text('Digital Invoice', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: primaryGreen)),
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Invoice verified for $monthYear')),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.undo_rounded, size: 14, color: errorRed),
+                    label: const Text('Revert', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: errorRed)),
+                    onPressed: () => _handleMarkUnpaid(schedule),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),

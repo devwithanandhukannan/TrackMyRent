@@ -284,3 +284,17 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt
 }
 
+model AppCreditPackage {
+  id          String   @id @default(uuid())
+  name        String   // e.g. "100 Credits", "500 Credits Booster", "1000 Credits Mega"
+  credits     Int      // e.g. 100, 250, 500, 1000
+  price       Float    // e.g. 99, 199, 349, 599
+  description String?  // e.g. "Instant top-up for WhatsApp payment reminders & receipts"
+  tag         String?  // e.g. "Popular", "Best Value"
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+

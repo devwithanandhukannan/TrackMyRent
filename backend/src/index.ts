@@ -21,6 +21,12 @@ import appPlanRoutes from './routes/appPlanRoutes';
 import expenseCategoryRoutes from './routes/expenseCategoryRoutes';
 import whatsappTemplateRoutes from './routes/whatsappTemplateRoutes';
 import settingRoutes from './routes/settingRoutes';
+import creditPackageRoutes from './routes/creditPackageRoutes';
+import queueRoutes from './routes/queueRoutes';
+
+import { reminderWorker, registerDailyReminderCron } from './queues/reminderQueue';
+import { billingWorker, registerMonthlyBillingCron } from './queues/billingQueue';
+import { webhookWorker } from './queues/webhookQueue';
 
 app.use(cors());
 app.use(express.json());
@@ -34,8 +40,10 @@ app.use('/api/expenses/categories', expenseCategoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/credits', creditRoutes);
 app.use('/api/app-plans', appPlanRoutes);
+app.use('/api/credit-packages', creditPackageRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/settings/whatsapp-templates', whatsappTemplateRoutes);
+app.use('/api/queues', queueRoutes);
 
 // Health Check Endpoint
 app.get('/health', async (req: Request, res: Response) => {
@@ -56,8 +64,35 @@ app.get('/health', async (req: Request, res: Response) => {
   }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`🚀 RentTrack Backend running on http://localhost:${PORT}`);
+  
+  // Register BullMQ repeatable background cron jobs
+  await registerDailyReminderCron();
+  await registerMonthlyBillingCron();
 });
+
+// Graceful Shutdown for BullMQ Workers
+const shutdown = async (signal: string) => {
+  console.log(`\n🛑 Received ${signal}. Shutting down BullMQ workers cleanly...`);
+  try {
+    await Promise.all([
+      reminderWorker.close(),
+      billingWorker.close(),
+      webhookWorker.close(),
+    ]);
+    console.log('✅ BullMQ workers closed.');
+    server.close(() => {
+      console.log('✅ HTTP server closed.');
+      process.exit(0);
+    });
+  } catch (err) {
+    console.error('Error during shutdown:', err);
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export { app, prisma };

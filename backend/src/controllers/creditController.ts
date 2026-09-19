@@ -14,7 +14,11 @@ export const getSubscriptionAndCredits = async (req: Request, res: Response) => 
     }
 
     const availableCredits = subscriptionCredit.purchasedCredits - subscriptionCredit.usedCredits;
-    const isSubscriptionExpired = subscriptionCredit.expiresAt ? new Date() > subscriptionCredit.expiresAt : false;
+    const now = new Date();
+    const expiresAt = subscriptionCredit.expiresAt ? new Date(subscriptionCredit.expiresAt) : null;
+    const isSubscriptionExpired = expiresAt ? now > expiresAt : false;
+    const msRemaining = expiresAt ? expiresAt.getTime() - now.getTime() : 0;
+    const daysRemaining = isSubscriptionExpired ? 0 : Math.max(0, Math.ceil(msRemaining / (1000 * 60 * 60 * 24)));
 
     res.status(200).json({
       subscription: {
@@ -22,12 +26,13 @@ export const getSubscriptionAndCredits = async (req: Request, res: Response) => 
         subscriptionName: subscriptionCredit.subscriptionName,
         expiresAt: subscriptionCredit.expiresAt,
         isExpired: isSubscriptionExpired,
+        daysRemaining: daysRemaining,
       },
       credits: {
         purchasedCredits: subscriptionCredit.purchasedCredits,
         usedCredits: subscriptionCredit.usedCredits,
         availableCredits: Math.max(0, availableCredits),
-        creditRule: 'Purchased credits NEVER expire even after subscription validity expires.',
+        creditRule: 'Unused credits roll over and accumulate when new subscription packages are added.',
       },
     });
   } catch (error) {

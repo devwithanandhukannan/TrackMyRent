@@ -34,7 +34,9 @@ import {
   Mail,
   Calendar,
   Zap,
-  HelpCircle
+  HelpCircle,
+  Coins,
+  Tag
 } from "lucide-react";
 
 const API_BASE_URL = "http://localhost:5001/api";
@@ -66,6 +68,18 @@ interface AppSubscriptionPlan {
   durationMonths: number;
   whatsappCredits: number;
   isFreeTrial: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt?: string;
+}
+
+interface AppCreditPackage {
+  id: string;
+  name: string;
+  credits: number;
+  price: number;
+  description: string;
+  tag?: string | null;
   isActive: boolean;
   sortOrder: number;
   createdAt?: string;
@@ -124,6 +138,7 @@ export default function AdminDashboard() {
   const [members, setMembers] = useState<Member[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [appPlans, setAppPlans] = useState<AppSubscriptionPlan[]>([]);
+  const [creditPackages, setCreditPackages] = useState<AppCreditPackage[]>([]);
   const [templates, setTemplates] = useState<WhatsAppTemplateItem[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettingsMap>({});
 
@@ -131,6 +146,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [savingSettings, setSavingSettings] = useState<boolean>(false);
   const [savingAppPlan, setSavingAppPlan] = useState<boolean>(false);
+  const [savingCreditPackage, setSavingCreditPackage] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   // Search & Filters for End Users Tab
@@ -147,6 +163,8 @@ export default function AdminDashboard() {
   const [selectedPlanToAssign, setSelectedPlanToAssign] = useState<string>("");
   const [showAppPlanModal, setShowAppPlanModal] = useState<boolean>(false);
   const [editingAppPlan, setEditingAppPlan] = useState<AppSubscriptionPlan | null>(null);
+  const [showCreditPackageModal, setShowCreditPackageModal] = useState<boolean>(false);
+  const [editingCreditPackage, setEditingCreditPackage] = useState<AppCreditPackage | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState<boolean>(false);
   const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplateItem | null>(null);
 
@@ -164,6 +182,17 @@ export default function AdminDashboard() {
     whatsappCredits: 100,
     isFreeTrial: false,
     isActive: true,
+  });
+
+  // New / Edit Credit Package Form State
+  const [creditPackageForm, setCreditPackageForm] = useState({
+    name: "",
+    credits: 100,
+    price: 99,
+    description: "",
+    tag: "",
+    isActive: true,
+    sortOrder: 0,
   });
 
   // New / Edit Template Form State
@@ -186,10 +215,11 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [membersRes, orgsRes, plansRes, templatesRes, settingsRes] = await Promise.all([
+      const [membersRes, orgsRes, plansRes, creditPackagesRes, templatesRes, settingsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/members`),
         fetch(`${API_BASE_URL}/auth/organizations`),
         fetch(`${API_BASE_URL}/app-plans`),
+        fetch(`${API_BASE_URL}/credit-packages?includeDisabled=true`),
         fetch(`${API_BASE_URL}/settings/whatsapp-templates`),
         fetch(`${API_BASE_URL}/settings`),
       ]);
@@ -205,6 +235,10 @@ export default function AdminDashboard() {
       if (plansRes.ok) {
         const data = await plansRes.json();
         setAppPlans(data.data || []);
+      }
+      if (creditPackagesRes.ok) {
+        const data = await creditPackagesRes.json();
+        setCreditPackages(data.data || []);
       }
       if (templatesRes.ok) {
         const data = await templatesRes.json();
@@ -453,6 +487,78 @@ export default function AdminDashboard() {
       showToast("Error saving plan", "error");
     } finally {
       setSavingAppPlan(false);
+    }
+  };
+
+  // Save / Create Credit Package
+  const handleSaveCreditPackage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!creditPackageForm.name.trim() || Number(creditPackageForm.credits) <= 0) {
+      showToast("Please enter a valid package name and credits count", "error");
+      return;
+    }
+    setSavingCreditPackage(true);
+    try {
+      const method = editingCreditPackage ? "PUT" : "POST";
+      const url = editingCreditPackage
+        ? `${API_BASE_URL}/credit-packages/${editingCreditPackage.id}`
+        : `${API_BASE_URL}/credit-packages`;
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(creditPackageForm),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(editingCreditPackage ? "Credit package updated!" : "New credit package created!");
+        setShowCreditPackageModal(false);
+        setEditingCreditPackage(null);
+        fetchData();
+      } else {
+        showToast(data.error || "Failed to save credit package", "error");
+      }
+    } catch (err) {
+      showToast("Error saving credit package", "error");
+    } finally {
+      setSavingCreditPackage(false);
+    }
+  };
+
+  // Toggle Active/Inactive Credit Package
+  const handleToggleCreditPackage = async (id: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/credit-packages/${id}/toggle`, {
+        method: "PATCH",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast("Credit package status updated");
+        fetchData();
+      } else {
+        showToast(data.error || "Failed to toggle package", "error");
+      }
+    } catch (err) {
+      showToast("Error updating package", "error");
+    }
+  };
+
+  // Delete Credit Package
+  const handleDeleteCreditPackage = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this credit package?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/credit-packages/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast("Credit package deleted");
+        fetchData();
+      } else {
+        showToast(data.error || "Failed to delete package", "error");
+      }
+    } catch (err) {
+      showToast("Error deleting package", "error");
     }
   };
 
@@ -1203,8 +1309,8 @@ export default function AdminDashboard() {
         ──────────────────────────────────────────────────────────────────────── */}
         {activeTab === "plans" && (
           <div className="space-y-8 animate-in fade-in duration-200">
-            {/* KPI Summary for Subscription Plans */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* KPI Summary for Subscription Plans & Credits */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="flex items-center justify-between text-slate-500 mb-2">
                   <span className="text-xs font-semibold uppercase tracking-wider">
@@ -1214,6 +1320,17 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-2xl font-bold text-slate-900">{appPlans.length}</div>
                 <div className="text-xs text-slate-500 mt-1">Configured tiers</div>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider">
+                    Credit Top-Ups
+                  </span>
+                  <Coins className="w-5 h-5 text-purple-600" />
+                </div>
+                <div className="text-2xl font-bold text-slate-900">{creditPackages.length}</div>
+                <div className="text-xs text-slate-500 mt-1">Available top-up packs</div>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
@@ -1364,6 +1481,144 @@ export default function AdminDashboard() {
                         <Edit3 className="w-3.5 h-3.5" />
                         <span>Edit</span>
                       </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── SECTION 2: Additional Credit Top-Up Packages Store ── */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-900 tracking-tight">
+                      Additional Credit Top-Up Packages
+                    </h3>
+                    <span className="px-2.5 py-0.5 text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 rounded-full">
+                      On-Demand Add-Ons
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Facilities can purchase these additional credit packages anytime for WhatsApp reminders & receipts. Unused credits automatically roll over!
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setEditingCreditPackage(null);
+                    setCreditPackageForm({
+                      name: "",
+                      credits: 100,
+                      price: 99,
+                      description: "",
+                      tag: "",
+                      isActive: true,
+                      sortOrder: (creditPackages.length + 1) * 10,
+                    });
+                    setShowCreditPackageModal(true);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold transition shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Credit Package</span>
+                </button>
+              </div>
+
+              {/* Credit Packages Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                {creditPackages.map((pkg) => (
+                  <div
+                    key={pkg.id}
+                    className="bg-slate-50/50 rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between relative hover:bg-white hover:border-slate-300 hover:shadow-sm transition"
+                  >
+                    {pkg.tag && (
+                      <span className="absolute top-4 right-4 text-[10px] uppercase font-extrabold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                        {pkg.tag}
+                      </span>
+                    )}
+
+                    <div>
+                      <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold mb-3">
+                        <Coins className="w-4 h-4" />
+                      </div>
+
+                      <h4 className="text-base font-bold text-slate-900">{pkg.name}</h4>
+                      <p className="text-xs text-slate-500 mt-1 min-h-[30px] line-clamp-2">
+                        {pkg.description || "WhatsApp message booster package"}
+                      </p>
+
+                      <div className="my-4 pb-4 border-b border-slate-200/70">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-extrabold text-slate-900">₹{pkg.price}</span>
+                          <span className="text-xs text-slate-400">
+                            / {pkg.credits} credits
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-purple-700 font-semibold mt-1">
+                          ₹{(pkg.price / (pkg.credits || 1)).toFixed(2)} per WhatsApp credit
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-xs text-slate-600">
+                        <div className="flex items-center gap-2 font-semibold text-purple-700 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-200/60">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+                          <span>+{pkg.credits} WhatsApp Quota</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-600 px-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          <span>Rollover protected</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-600 px-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          <span>Instant auto-credit</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 pt-3 border-t border-slate-200/70 flex items-center justify-between">
+                      <button
+                        onClick={() => handleToggleCreditPackage(pkg.id)}
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full transition cursor-pointer ${
+                          pkg.isActive
+                            ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                        }`}
+                        title="Click to toggle active/disabled"
+                      >
+                        {pkg.isActive ? "Active" : "Disabled"}
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingCreditPackage(pkg);
+                            setCreditPackageForm({
+                              name: pkg.name,
+                              credits: pkg.credits,
+                              price: pkg.price,
+                              tag: pkg.tag || "",
+                              description: pkg.description || "",
+                              isActive: pkg.isActive,
+                              sortOrder: pkg.sortOrder || 0,
+                            });
+                            setShowCreditPackageModal(true);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition"
+                          title="Edit Package"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteCreditPackage(pkg.id)}
+                          className="p-1 text-xs text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition"
+                          title="Delete Package"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1812,6 +2067,183 @@ export default function AdminDashboard() {
                   className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs"
                 >
                   {savingAppPlan ? "Saving..." : "Save Plan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────────────────────────
+          MODAL: Create / Edit Additional Credit Top-Up Package
+      ────────────────────────────────────────────────────────────────────────── */}
+      {showCreditPackageModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                  <Coins className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">
+                    {editingCreditPackage ? "Edit Credit Package" : "Create Credit Top-Up Package"}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Additional WhatsApp credit booster for mobile tenants
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowCreditPackageModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCreditPackage} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Package Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={creditPackageForm.name}
+                    onChange={(e) =>
+                      setCreditPackageForm({ ...creditPackageForm, name: e.target.value })
+                    }
+                    placeholder="e.g. 250 Credits Booster, 500 Credits Mega Pack"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Credits Count *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={creditPackageForm.credits}
+                    onChange={(e) =>
+                      setCreditPackageForm({
+                        ...creditPackageForm,
+                        credits: Number(e.target.value),
+                      })
+                    }
+                    placeholder="100, 250, 500, 1000"
+                    className="w-full px-3 py-2 bg-purple-50/50 border border-purple-300 rounded-xl text-sm font-semibold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Price (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={creditPackageForm.price}
+                    onChange={(e) =>
+                      setCreditPackageForm({
+                        ...creditPackageForm,
+                        price: Number(e.target.value),
+                      })
+                    }
+                    placeholder="99, 199, 349, 599"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tag / Badge (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={creditPackageForm.tag}
+                    onChange={(e) =>
+                      setCreditPackageForm({ ...creditPackageForm, tag: e.target.value })
+                    }
+                    placeholder="e.g. Starter, Popular, Best Value"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Sort Order
+                  </label>
+                  <input
+                    type="number"
+                    value={creditPackageForm.sortOrder}
+                    onChange={(e) =>
+                      setCreditPackageForm({
+                        ...creditPackageForm,
+                        sortOrder: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={creditPackageForm.description}
+                    onChange={(e) =>
+                      setCreditPackageForm({
+                        ...creditPackageForm,
+                        description: e.target.value,
+                      })
+                    }
+                    placeholder="Brief note on what this booster offers..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="pkgIsActive"
+                    checked={creditPackageForm.isActive}
+                    onChange={(e) =>
+                      setCreditPackageForm({
+                        ...creditPackageForm,
+                        isActive: e.target.checked,
+                      })
+                    }
+                    className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
+                  />
+                  <label htmlFor="pkgIsActive" className="text-xs font-semibold text-slate-700">
+                    Active & Available in Mobile App Store
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCreditPackageModal(false)}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCreditPackage}
+                  className="px-4 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-xs"
+                >
+                  {savingCreditPackage ? "Saving..." : "Save Credit Package"}
                 </button>
               </div>
             </form>

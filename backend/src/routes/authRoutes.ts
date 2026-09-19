@@ -8,6 +8,7 @@ import {
   getAllOrganizations,
   updateTenantPayout,
   subscribeAppPlan,
+  updateTenantProfile,
 } from '../controllers/authController';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.post('/verify-otp', verifyOtp);
 router.get('/organizations', getAllOrganizations);
 router.put('/organization/:id/payout', updateTenantPayout);
 router.post('/organization/:id/subscribe-app-plan', subscribeAppPlan);
+router.put('/organization/:id/profile', updateTenantProfile);
 
 export default router;
 

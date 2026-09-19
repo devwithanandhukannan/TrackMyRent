@@ -195,13 +195,17 @@ class _PlanDetailScreenState extends State<PlanDetailScreen>
                 _buildSummaryBar(),
                 // Tab content
                 Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildMembersTab(),
-                      _buildGroupsTab(),
-                      _buildPaymentsTab(),
-                    ],
+                  child: RefreshIndicator(
+                    onRefresh: _loadPlanDetail,
+                    color: primaryGreen,
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildMembersTab(),
+                        _buildGroupsTab(),
+                        _buildPaymentsTab(),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -258,22 +262,29 @@ class _PlanDetailScreenState extends State<PlanDetailScreen>
 
   Widget _buildMembersTab() {
     if (_members.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.people_outline_rounded, size: 52, color: Color(0xFF94A3B8)),
-            SizedBox(height: 12),
-            Text('No members in this plan',
-                style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600, fontSize: 15)),
-            SizedBox(height: 8),
-            Text('Add members and assign to this plan.',
-                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
-          ],
+      return const SingleChildScrollView(
+        physics: AlwaysScrollableScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.only(top: 80),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.people_outline_rounded, size: 52, color: Color(0xFF94A3B8)),
+                SizedBox(height: 12),
+                Text('No members in this plan',
+                    style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600, fontSize: 15)),
+                SizedBox(height: 8),
+                Text('Add members and assign to this plan.',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+              ],
+            ),
+          ),
         ),
       );
     }
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: _members.length,
       itemBuilder: (ctx, i) {
@@ -337,6 +348,7 @@ class _PlanDetailScreenState extends State<PlanDetailScreen>
 
   Widget _buildGroupsTab() {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
         // Add group button
@@ -493,19 +505,26 @@ class _PlanDetailScreenState extends State<PlanDetailScreen>
 
   Widget _buildPaymentsTab() {
     if (_payments.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.receipt_long_outlined, size: 52, color: Color(0xFF94A3B8)),
-            SizedBox(height: 12),
-            Text('No payments recorded yet.',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 15, fontWeight: FontWeight.w600)),
-          ],
+      return const SingleChildScrollView(
+        physics: AlwaysScrollableScrollPhysics(),
+        child: Padding(
+          padding: EdgeInsets.only(top: 80),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.receipt_long_outlined, size: 52, color: Color(0xFF94A3B8)),
+                SizedBox(height: 12),
+                Text('No payments recorded yet.',
+                    style: TextStyle(color: Color(0xFF64748B), fontSize: 15, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
         ),
       );
     }
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: _payments.length,
       itemBuilder: (ctx, i) {

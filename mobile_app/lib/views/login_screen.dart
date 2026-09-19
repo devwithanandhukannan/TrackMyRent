@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../utils/colors.dart';
 import '../main.dart';
-import 'onboarding_screen.dart';
+import 'profile_completion_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,34 +14,25 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Mode: 0 = Register New Facility, 1 = Existing Tenant Sign In
+  // Mode: 0 = Register New Facility, 1 = Existing Owner Sign In
   int _tabMode = 0;
 
-  // Controllers for Basic Tenant Details
   final TextEditingController _ownerNameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _orgNameController = TextEditingController();
-  final TextEditingController _otpController = TextEditingController(text: '00000');
+  final TextEditingController _otpController = TextEditingController();
 
-  String _selectedOrgType = 'GYM';
+  bool _otpSent = false;
   bool _isLoading = false;
   String _errorMessage = '';
-  String _successMessage = '';
-
-  final List<Map<String, String>> _orgTypes = [
-    {'label': 'Gym & Fitness Center', 'value': 'GYM'},
-    {'label': 'Hostel & PG Living', 'value': 'HOSTEL'},
-    {'label': 'Tuition & Coaching Centre', 'value': 'TUITION_CENTER'},
-    {'label': 'Rental Building / Property', 'value': 'RENTAL'},
-    {'label': 'Academy & Sports Club', 'value': 'ACADEMY'},
-  ];
+  int _countdown = 45;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _phoneController.addListener(() {
-      setState(() {});
-    });
+    _phoneController.addListener(() => setState(() {}));
+    _otpController.addListener(() => setState(() {}));
   }
 
   @override
@@ -49,45 +41,79 @@ class _LoginScreenState extends State<LoginScreen> {
     _phoneController.dispose();
     _orgNameController.dispose();
     _otpController.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
-  // ─── Verification & Submission ─────────────────────────────────────────────
+  void _startCountdown() {
+    _timer?.cancel();
+    setState(() => _countdown = 45);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdown > 0) {
+        setState(() => _countdown--);
+      } else {
+        timer.cancel();
+      }
+    });
+  }
 
-  Future<void> _handleTenantSubmit() async {
+  Future<void> _handleSendOtp() async {
+    final phone = _phoneController.text.trim();
+    if (phone.length != 10) {
+      setState(() => _errorMessage = 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    if (_tabMode == 0) {
+      if (_ownerNameController.text.trim().isEmpty) {
+        setState(() => _errorMessage = 'Please enter your Full Name.');
+        return;
+      }
+      if (_orgNameController.text.trim().isEmpty) {
+        setState(() => _errorMessage = 'Please enter your Property / Facility Name.');
+        return;
+      }
+    }
+
     setState(() {
+      _isLoading = true;
       _errorMessage = '';
-      _successMessage = '';
     });
 
+    try {
+      final res = await ApiService.sendOtp(phone);
+      if (res['success'] == true) {
+        setState(() {
+          _otpSent = true;
+          _isLoading = false;
+        });
+        _startCountdown();
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = res['error'] ?? 'Failed to send OTP. Please try again.';
+        });
+      }
+    } catch (_) {
+      // Local dev fallback
+      setState(() {
+        _otpSent = true;
+        _isLoading = false;
+      });
+      _startCountdown();
+    }
+  }
+
+  Future<void> _handleVerifyOtp() async {
     final phone = _phoneController.text.trim();
     final otp = _otpController.text.trim().isEmpty ? '00000' : _otpController.text.trim();
     final name = _ownerNameController.text.trim();
     final orgName = _orgNameController.text.trim();
 
-    // 1. Mandatory 10-digit Phone Validation
-    if (phone.isEmpty) {
-      setState(() => _errorMessage = 'Please enter your 10-digit mobile number.');
-      return;
-    }
-    if (phone.length != 10) {
-      setState(() => _errorMessage = 'Mobile number must be exactly 10 digits (currently ${phone.length}/10).');
-      return;
-    }
-
-    // 2. Mandatory Basic Details Check for Registration
-    if (_tabMode == 0) {
-      if (name.isEmpty) {
-        setState(() => _errorMessage = 'Please enter your Full Name.');
-        return;
-      }
-      if (orgName.isEmpty) {
-        setState(() => _errorMessage = 'Please enter your Organisation / Facility Name.');
-        return;
-      }
-    }
-
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
 
     try {
       final res = await ApiService.verifyOtp(
@@ -95,22 +121,11 @@ class _LoginScreenState extends State<LoginScreen> {
         otp: otp,
         adminName: name.isNotEmpty ? name : null,
         orgName: orgName.isNotEmpty ? orgName : null,
-        orgType: _selectedOrgType,
       );
 
       if (res['token'] != null) {
         final finalOrgName = res['organization']?['name'] ?? orgName;
         final finalUserName = res['user']?['name'] ?? name;
-
-        // Verify that the user actually has basic details registered
-        if ((finalOrgName == null || finalOrgName.toString().trim().isEmpty) ||
-            (finalUserName == null || finalUserName.toString().trim().isEmpty)) {
-          setState(() {
-            _tabMode = 0; // Switch to register tab
-            _errorMessage = 'Basic details missing. Please enter your Name and Organisation Name.';
-          });
-          return;
-        }
 
         await ApiService.saveSession(
           token: res['token'],
@@ -121,479 +136,577 @@ class _LoginScreenState extends State<LoginScreen> {
           phone: res['user']?['phone'] ?? phone,
         );
 
+        final isCompleted = await ApiService.isProfileCompleted();
+
         if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
-          );
-        }
-      } else {
-        final err = res['error'] ?? 'Authentication failed';
-        if (err.toLowerCase().contains('name') || err.toLowerCase().contains('basic')) {
-          setState(() {
-            _tabMode = 0; // Switch to registration tab so user can complete basic details
-            _errorMessage = err;
-          });
-        } else {
-          setState(() => _errorMessage = err);
-        }
-      }
-    } catch (e) {
-      setState(() => _errorMessage = 'Could not connect to server. Please check your network.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  // ─── 10-Column Phone Number Display Widget ──────────────────────────────────
-  Widget _build10ColumnPhoneIndicator(String phone) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              '10-Digit Mobile Number (India)',
-              style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: phone.length == 10
-                    ? const Color(0xFF059669).withValues(alpha: 0.2)
-                    : Colors.white10,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: phone.length == 10 ? const Color(0xFF059669) : Colors.transparent,
-                ),
-              ),
-              child: Text(
-                '${phone.length} / 10 Digits',
-                style: TextStyle(
-                  color: phone.length == 10 ? const Color(0xFF10B981) : AppColors.slate400,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        // Text Field with +91 prefix
-        TextField(
-          controller: _phoneController,
-          keyboardType: TextInputType.phone,
-          maxLength: 10,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(10),
-          ],
-          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: 'Enter 10-digit number',
-            hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 14, letterSpacing: 0),
-            prefixIcon: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              child: const Text(
-                '+91',
-                style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 15),
-              ),
-            ),
-            filled: true,
-            fillColor: AppColors.background,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // Visual 10 Columns Row (Directly implements "phonenumber show the 10 col")
-        Row(
-          children: List.generate(10, (index) {
-            final hasDigit = index < phone.length;
-            final digitChar = hasDigit ? phone[index] : '';
-            final isCurrent = index == phone.length;
-
-            return Expanded(
-              child: Container(
-                margin: EdgeInsets.only(right: index < 9 ? 4.0 : 0.0),
-                height: 38,
-                decoration: BoxDecoration(
-                  color: hasDigit
-                      ? const Color(0xFF059669).withValues(alpha: 0.25)
-                      : (isCurrent ? Colors.white12 : AppColors.background),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: hasDigit
-                        ? const Color(0xFF10B981)
-                        : (isCurrent ? const Color(0xFF38BDF8) : Colors.white10),
-                    width: hasDigit || isCurrent ? 1.5 : 1.0,
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  hasDigit ? digitChar : '${index + 1}',
-                  style: TextStyle(
-                    color: hasDigit
-                        ? Colors.white
-                        : (isCurrent ? const Color(0xFF38BDF8) : Colors.white24),
-                    fontSize: hasDigit ? 15 : 10,
-                    fontWeight: hasDigit ? FontWeight.w900 : FontWeight.w500,
-                  ),
+          if (_tabMode == 0 || !isCompleted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (ctx) => ProfileCompletionScreen(
+                  phone: phone,
+                  initialName: finalUserName,
+                  initialOrgName: finalOrgName,
                 ),
               ),
             );
-          }),
-        ),
-      ],
-    );
+          } else {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
+            );
+          }
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = res['error'] ?? 'Invalid verification code. Please check and retry.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Could not connect to server. Please check your network.';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // App Logo Icon
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF059669),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF059669).withValues(alpha: 0.4),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Atmospheric Emerald Brand Logo
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.secondaryContainer.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      Container(
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.15),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: const Icon(Icons.apartment_rounded, size: 38, color: AppColors.primary),
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.apartment_rounded, size: 38, color: Colors.white),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'RentTrack',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Facility Management & Rental Payment System',
-                  style: TextStyle(fontSize: 12, color: AppColors.slate400),
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
-                // Error Message Alert
-                if (_errorMessage.isNotEmpty) ...[
+                  // App Title & Tagline
                   Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+                      color: AppColors.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _errorMessage,
-                            style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                        Icon(Icons.verified_rounded, size: 14, color: AppColors.primary),
+                        SizedBox(width: 4),
+                        Text(
+                          'Trusted Property OS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                ],
-
-                // Success Message Alert
-                if (_successMessage.isNotEmpty) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF059669).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.4)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _successMessage,
-                            style: const TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'RentTrack',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.onSurface,
+                      letterSpacing: -0.8,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                ],
-
-                // Segmented Tabs: Register vs Sign In
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white10),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Effortless Rent & Member Management',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.onSurfaceVariant,
+                    ),
                   ),
-                  child: Row(
+                  const SizedBox(height: 14),
+
+                  // Feature Pill Badges
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 6,
+                    runSpacing: 6,
                     children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() {
-                            _tabMode = 0;
-                            _errorMessage = '';
-                          }),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: _tabMode == 0 ? const Color(0xFF059669) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Register Facility',
-                              style: TextStyle(
-                                color: _tabMode == 0 ? Colors.white : AppColors.slate400,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() {
-                            _tabMode = 1;
-                            _errorMessage = '';
-                          }),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: _tabMode == 1 ? const Color(0xFF059669) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Sign In',
-                              style: TextStyle(
-                                color: _tabMode == 1 ? Colors.white : AppColors.slate400,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                      _buildFeatureBadge(Icons.bolt_rounded, 'Auto Billing'),
+                      _buildFeatureBadge(Icons.chat_bubble_outline_rounded, '1-Tap WhatsApp'),
+                      _buildFeatureBadge(Icons.account_balance_rounded, 'Direct UPI'),
                     ],
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 24),
 
-                // Main Form Card
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header Text
-                      Text(
-                        _tabMode == 0 ? 'TENANT FACILITY REGISTRATION' : 'TENANT SIGN IN',
-                        style: const TextStyle(
-                          color: Color(0xFF10B981),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.1,
-                        ),
+                  // Mode Selector Tabs (Register vs Sign In)
+                  if (!_otpSent)
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainer,
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _tabMode == 0
-                            ? 'Register your basic details (Name, 10-digit Phone, Organisation Name) to manage your services.'
-                            : 'Enter your registered 10-digit phone number to sign in to your facility.',
-                        style: const TextStyle(color: AppColors.slate400, fontSize: 12),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Field 1: Name (Required in Registration Mode)
-                      if (_tabMode == 0) ...[
-                        const Text('Owner / Admin Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _ownerNameController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'e.g., Anandhu Kannan',
-                            hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
-                            prefixIcon: const Icon(Icons.person_rounded, color: AppColors.slate400),
-                            filled: true,
-                            fillColor: AppColors.background,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // Field 2: 10-Column Phone Number
-                      _build10ColumnPhoneIndicator(_phoneController.text),
-                      const SizedBox(height: 16),
-
-                      // Field 3: Organisation Name (Required in Registration Mode)
-                      if (_tabMode == 0) ...[
-                        const Text('Organisation / Facility Name *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _orgNameController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'e.g., Phoenix Fitness Center',
-                            hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 13),
-                            prefixIcon: const Icon(Icons.business_rounded, color: AppColors.slate400),
-                            filled: true,
-                            fillColor: AppColors.background,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Field 4: Facility Category
-                        const Text('Facility Category', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.background,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _selectedOrgType,
-                              isExpanded: true,
-                              dropdownColor: AppColors.surface,
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
-                              items: _orgTypes.map((type) {
-                                return DropdownMenuItem<String>(
-                                  value: type['value'],
-                                  child: Text(type['label']!),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                if (val != null) setState(() => _selectedOrgType = val);
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // Field 5: OTP Code (Default 00000)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Row(
                         children: [
-                          const Text('Verification OTP *', style: TextStyle(color: AppColors.slate400, fontSize: 12, fontWeight: FontWeight.bold)),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF059669).withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(6),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() {
+                                _tabMode = 0;
+                                _errorMessage = '';
+                              }),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                                decoration: BoxDecoration(
+                                  color: _tabMode == 0 ? Colors.white : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: _tabMode == 0
+                                      ? [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.04),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  'Register Property',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: _tabMode == 0 ? FontWeight.w700 : FontWeight.w600,
+                                    color: _tabMode == 0 ? AppColors.onSurface : AppColors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
                             ),
-                            child: const Text('Default OTP: 00000', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() {
+                                _tabMode = 1;
+                                _errorMessage = '';
+                              }),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 9),
+                                decoration: BoxDecoration(
+                                  color: _tabMode == 1 ? Colors.white : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: _tabMode == 1
+                                      ? [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.04),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  'Existing Sign In',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: _tabMode == 1 ? FontWeight.w700 : FontWeight.w600,
+                                    color: _tabMode == 1 ? AppColors.onSurface : AppColors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: _otpController,
-                        keyboardType: TextInputType.number,
-                        maxLength: 6,
-                        style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 4, fontWeight: FontWeight.bold),
-                        decoration: InputDecoration(
-                          counterText: '',
-                          prefixIcon: const Icon(Icons.lock_clock_rounded, color: AppColors.slate400),
-                          filled: true,
-                          fillColor: AppColors.background,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
+                    ),
+                  const SizedBox(height: 16),
+
+                  // Elevated White Card (Main Form)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 18,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Registration extra fields
+                        if (_tabMode == 0 && !_otpSent) ...[
+                          const Text(
+                            'Your Full Name',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _ownerNameController,
+                            decoration: InputDecoration(
+                              hintText: 'e.g. Anandhu Kannan',
+                              hintStyle: const TextStyle(fontSize: 14, color: AppColors.outline),
+                              prefixIcon: const Icon(Icons.person_outline_rounded, size: 20, color: AppColors.primary),
+                              filled: true,
+                              fillColor: AppColors.surfaceContainerLow,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+
+                          const Text(
+                            'Facility / Business Name',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _orgNameController,
+                            decoration: InputDecoration(
+                              hintText: 'e.g. Royal PG Hostels or Iron Gym',
+                              hintStyle: const TextStyle(fontSize: 14, color: AppColors.outline),
+                              prefixIcon: const Icon(Icons.business_outlined, size: 20, color: AppColors.primary),
+                              filled: true,
+                              fillColor: AppColors.surfaceContainerLow,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+
+                        // Phone Number Input
+                        const Text(
+                          'Mobile Number',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.onSurfaceVariant,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Submit Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF059669),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 0,
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          onPressed: _isLoading ? null : _handleTenantSubmit,
-                          child: _isLoading
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Text(
-                                  _tabMode == 0 ? 'Register Facility & Enter App' : 'Verify & Sign In',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.03),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
                                 ),
+                                child: const Row(
+                                  children: [
+                                    Text('🇮🇳', style: TextStyle(fontSize: 16)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      '+91',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.onSurface,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  controller: _phoneController,
+                                  enabled: !_otpSent,
+                                  keyboardType: TextInputType.phone,
+                                  maxLength: 10,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(10),
+                                  ],
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.0,
+                                    color: AppColors.onSurface,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    counterText: '',
+                                    hintText: '98450 12345',
+                                    hintStyle: TextStyle(fontSize: 14, color: AppColors.outline),
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+                                  ),
+                                ),
+                              ),
+                              if (_otpSent)
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.primary),
+                                  onPressed: () => setState(() => _otpSent = false),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
 
-                // Link to Onboarding Guide
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (ctx) => const OnboardingScreen()),
-                    );
-                  },
-                  child: const Text(
-                    'View Setup Guide & WhatsApp Features →',
-                    style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 13),
+                        // OTP Section
+                        if (_otpSent) ...[
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Enter Passcode',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.onSurface,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Code sent to WhatsApp & SMS',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.secondaryContainer.withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircleAvatar(radius: 3, backgroundColor: AppColors.primary),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Sent',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+
+                          // PIN Input
+                          TextField(
+                            controller: _otpController,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 10,
+                              color: AppColors.primary,
+                            ),
+                            decoration: InputDecoration(
+                              counterText: '',
+                              hintText: '••••••',
+                              hintStyle: const TextStyle(letterSpacing: 8, color: AppColors.outline),
+                              filled: true,
+                              fillColor: AppColors.surfaceContainerLow,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Timer & Resend
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.schedule_rounded, size: 14, color: AppColors.outline),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _countdown > 0 ? 'Resend code in 0:${_countdown.toString().padLeft(2, '0')}s' : 'Code expired',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                              TextButton(
+                                onPressed: _countdown == 0 ? _handleSendOtp : null,
+                                child: Text(
+                                  'Resend',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: _countdown == 0 ? AppColors.primary : AppColors.outline,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+
+                        // Error Message
+                        if (_errorMessage.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.appleRedBg,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.appleRed),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage,
+                                    style: const TextStyle(fontSize: 12, color: AppColors.appleRed, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 20),
+
+                        // Action Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : (_otpSent ? _handleVerifyOtp : _handleSendOtp),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        _otpSent ? 'Verify & Continue' : 'Get Verification Code',
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.arrow_forward_rounded, size: 18),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureBadge(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainer,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.primary),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }

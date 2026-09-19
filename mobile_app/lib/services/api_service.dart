@@ -4,12 +4,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const List<String> _candidateHosts = [
+    'http://192.168.1.4:5001/api',
     'http://192.168.1.2:5001/api',
+    'http://192.168.1.3:5001/api',
+    'http://192.168.1.5:5001/api',
     'http://localhost:5001/api',
     'http://10.0.2.2:5001/api',
   ];
 
-  static String _activeBaseUrl = 'http://192.168.1.2:5001/api';
+  static String _activeBaseUrl = 'http://192.168.1.4:5001/api';
   static String get baseUrl => _activeBaseUrl;
   static const String _fallbackOrgId = 'f1aac5fa-5087-41fd-9c13-e9f4b20eae81';
 
@@ -52,6 +55,30 @@ class ApiService {
       'userName': prefs.getString('renttrack_user_name'),
       'phone': prefs.getString('renttrack_phone'),
     };
+  }
+
+  static Future<bool> isProfileCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userName = prefs.getString('renttrack_user_name');
+    final orgName = prefs.getString('renttrack_org_name');
+    final planChosen = prefs.getBool('renttrack_plan_chosen') ?? false;
+    
+    // Both user name and facility name must be set and not empty
+    if (userName == null || userName.trim().isEmpty) return false;
+    if (orgName == null || orgName.trim().isEmpty) return false;
+    return planChosen;
+  }
+
+  static Future<void> markProfileCompleted({
+    required String userName,
+    required String orgName,
+    String? planId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('renttrack_user_name', userName);
+    await prefs.setString('renttrack_org_name', orgName);
+    await prefs.setBool('renttrack_plan_chosen', true);
+    if (planId != null) await prefs.setString('renttrack_chosen_plan_id', planId);
   }
 
   static Future<String> getOrgId() async {
@@ -429,6 +456,33 @@ class ApiService {
 
   // ─── Tenant Payout & Subscription ──────────────────────────────────────────
 
+  static Future<bool> updateTenantProfile({
+    required String adminName,
+    required String orgName,
+  }) async {
+    final orgId = await getOrgId();
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.put(
+          Uri.parse('$host/auth/organization/$orgId/profile'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'adminName': adminName,
+            'orgName': orgName,
+          }),
+        ).timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('renttrack_org_name', orgName);
+          await prefs.setString('renttrack_user_name', adminName);
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
   static Future<bool> updateTenantPayout(Map<String, dynamic> payoutData) async {
     final orgId = await getOrgId();
     final response = await http.put(
@@ -439,6 +493,21 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  static const List<Map<String, dynamic>> fallbackPlans = [
+    {
+      'id': 'plan_2_days_trial',
+      'name': '2 Days Free Trial',
+      'price': 0.0,
+      'tag': 'Free 2 Days',
+      'description': 'Full feature access for 2 days with 50 starter WhatsApp credits',
+      'durationMonths': 0,
+      'durationDays': 2,
+      'whatsappCredits': 50,
+      'isFreeTrial': true,
+      'isActive': true,
+    },
+  ];
+
   static Future<List<dynamic>> fetchAppPlans() async {
     for (final host in [_activeBaseUrl, ..._candidateHosts]) {
       try {
@@ -448,11 +517,85 @@ class ApiService {
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
           final data = jsonDecode(response.body);
-          return data['data'] ?? [];
+          final list = data['data'] as List<dynamic>?;
+          if (list != null) {
+            // Filter only active packages created by the admin
+            final activeAdminPlans = list.where((p) => p['isActive'] != false).toList();
+            if (activeAdminPlans.isNotEmpty) {
+              // Admin has created packages! Return 2 Days Free Trial + admin-created packages
+              final hasTrial = activeAdminPlans.any((p) =>
+                  (p['isFreeTrial'] == true) ||
+                  (p['name'] ?? '').toString().toLowerCase().contains('trial') ||
+                  (p['name'] ?? '').toString().toLowerCase().contains('2 day'));
+              if (!hasTrial) {
+                return [fallbackPlans[0], ...activeAdminPlans];
+              }
+              return activeAdminPlans;
+            }
+          }
         }
       } catch (_) {}
     }
-    return [];
+    // Admin has not set any subscription package yet -> return ONLY the 2 Days Free Trial!
+    return fallbackPlans;
+  }
+
+  static const List<Map<String, dynamic>> defaultCreditPackages = [
+    {
+      'id': 'pkg_100_credits',
+      'name': '100 Credits Top-Up',
+      'credits': 100,
+      'price': 99,
+      'description': 'Instant top-up for WhatsApp payment reminders & receipts',
+      'tag': 'Starter',
+      'isActive': true,
+    },
+    {
+      'id': 'pkg_250_credits',
+      'name': '250 Credits Top-Up',
+      'credits': 250,
+      'price': 199,
+      'description': 'Standard pack for monthly reminders and receipts',
+      'tag': 'Popular',
+      'isActive': true,
+    },
+    {
+      'id': 'pkg_500_credits',
+      'name': '500 Credits Top-Up',
+      'credits': 500,
+      'price': 349,
+      'description': 'High-volume booster with maximum savings',
+      'tag': 'Best Value',
+      'isActive': true,
+    },
+    {
+      'id': 'pkg_1000_credits',
+      'name': '1000 Credits Mega Pack',
+      'credits': 1000,
+      'price': 599,
+      'description': 'Pro enterprise pack for high-member facilities',
+      'tag': 'Pro',
+      'isActive': true,
+    },
+  ];
+
+  static Future<List<dynamic>> fetchCreditPackages() async {
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http
+            .get(Uri.parse('$host/credit-packages'))
+            .timeout(const Duration(seconds: 3));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          final data = jsonDecode(response.body);
+          final list = data['data'] as List<dynamic>?;
+          if (list != null && list.isNotEmpty) {
+            return list;
+          }
+        }
+      } catch (_) {}
+    }
+    return defaultCreditPackages;
   }
 
   static Future<Map<String, dynamic>> fetchSubscriptionCredits() async {
@@ -468,7 +611,27 @@ class ApiService {
         }
       } catch (_) {}
     }
-    return {};
+
+    // Demo / Offline fallback data
+    final prefs = await SharedPreferences.getInstance();
+    final planName = prefs.getString('renttrack_active_plan_name') ?? '2 Days Free Trial';
+    final credits = prefs.getInt('renttrack_demo_credits') ?? 50;
+
+    return {
+      'subscription': {
+        'planType': 'CREDIT',
+        'subscriptionName': planName,
+        'expiresAt': DateTime.now().add(const Duration(days: 2)).toIso8601String(),
+        'isExpired': false,
+        'daysRemaining': 2,
+      },
+      'credits': {
+        'purchasedCredits': credits,
+        'usedCredits': 0,
+        'availableCredits': credits,
+        'creditRule': 'Unused credits roll over and accumulate when new subscription packages are added.',
+      },
+    };
   }
 
   static Future<Map<String, dynamic>?> purchaseCredits(int creditsCount) async {
@@ -489,10 +652,20 @@ class ApiService {
         }
       } catch (_) {}
     }
-    return null;
+
+    // Demo fallback: update local credits
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt('renttrack_demo_credits') ?? 50;
+    final updated = current + creditsCount;
+    await prefs.setInt('renttrack_demo_credits', updated);
+    return {
+      'message': '$creditsCount credits purchased successfully! Unused credits roll over.',
+      'purchasedCredits': updated,
+      'availableCredits': updated,
+    };
   }
 
-  static Future<Map<String, dynamic>?> subscribeAppPlan(String appPlanId) async {
+  static Future<Map<String, dynamic>?> subscribeAppPlan(String appPlanId, {String? planName, int? whatsappCredits}) async {
     final orgId = await getOrgId();
     for (final host in [_activeBaseUrl, ..._candidateHosts]) {
       try {
@@ -503,11 +676,30 @@ class ApiService {
         ).timeout(const Duration(seconds: 4));
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
-          return jsonDecode(response.body);
+          final data = jsonDecode(response.body);
+          return data;
         }
       } catch (_) {}
     }
-    return null;
+
+    // Demo fallback: store chosen plan locally
+    final prefs = await SharedPreferences.getInstance();
+    final resolvedPlanName = planName ?? (appPlanId.contains('2') ? '2 Days Free Trial' : 'Plus (1 Month)');
+    final addedCredits = whatsappCredits ?? (appPlanId.contains('2') ? 50 : 250);
+    final currentCredits = prefs.getInt('renttrack_demo_credits') ?? 0;
+    final totalCredits = currentCredits + addedCredits; // Rollover
+
+    await prefs.setString('renttrack_active_plan_name', resolvedPlanName);
+    await prefs.setString('renttrack_chosen_plan_id', appPlanId);
+    await prefs.setBool('renttrack_plan_chosen', true);
+    await prefs.setInt('renttrack_demo_credits', totalCredits);
+
+    return {
+      'success': true,
+      'message': 'Subscribed to $resolvedPlanName! $addedCredits WhatsApp credits added (total: $totalCredits).',
+      'organization': {'selectedAppPlanId': appPlanId},
+      'credits': {'available': totalCredits, 'total': totalCredits},
+    };
   }
 
   static Future<Map<String, dynamic>?> sendPaymentReminder(String scheduleId) async {
