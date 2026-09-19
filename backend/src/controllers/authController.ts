@@ -235,6 +235,7 @@ export const sendOtp = async (req: Request, res: Response) => {
       existingUser.organization && existingUser.organization.name && existingUser.organization.name.trim() !== '';
 
     res.status(200).json({
+      success: true,
       message: 'OTP sent successfully',
       otp: '00000',
       isNewUser: !hasValidDetails,
@@ -368,6 +369,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
     );
 
     res.status(200).json({
+      success: true,
       message: 'OTP verification successful',
       token,
       user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role },

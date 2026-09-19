@@ -82,17 +82,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final res = await ApiService.sendOtp(phone);
-      if (res['success'] == true) {
+      if (res['error'] != null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = res['error'] ?? 'Failed to send OTP. Please try again.';
+        });
+      } else {
         setState(() {
           _otpSent = true;
           _isLoading = false;
         });
         _startCountdown();
-      } else {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = res['error'] ?? 'Failed to send OTP. Please try again.';
-        });
       }
     } catch (_) {
       // Local dev fallback

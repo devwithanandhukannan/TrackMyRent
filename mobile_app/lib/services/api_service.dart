@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const List<String> _candidateHosts = [
+    'http://192.168.1.7:5001/api',
     'http://192.168.1.4:5001/api',
     'http://192.168.1.2:5001/api',
     'http://192.168.1.3:5001/api',
@@ -12,7 +13,7 @@ class ApiService {
     'http://10.0.2.2:5001/api',
   ];
 
-  static String _activeBaseUrl = 'http://192.168.1.4:5001/api';
+  static String _activeBaseUrl = 'http://192.168.1.7:5001/api';
   static String get baseUrl => _activeBaseUrl;
   static const String _fallbackOrgId = 'f1aac5fa-5087-41fd-9c13-e9f4b20eae81';
 
@@ -98,13 +99,16 @@ class ApiService {
         ).timeout(const Duration(seconds: 3));
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
-          return jsonDecode(response.body);
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          data['success'] = true;
+          return data;
         }
       } catch (_) {}
     }
 
     // Seamless Demo Fallback (never blocks users with server offline error)
     return {
+      'success': true,
       'message': 'Demo Mode Activated',
       'otp': '00000',
       'isNewUser': false,
@@ -138,7 +142,9 @@ class ApiService {
         ).timeout(const Duration(seconds: 3));
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
-          return jsonDecode(response.body);
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          data['success'] = true;
+          return data;
         }
       } catch (_) {}
     }
