@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../index';
 import { inMemoryAppPlans } from './appPlanController';
+import { getRedisClient } from '../config/redis';
+import { sendWhatsAppOtp } from '../services/whatsappService';
 
 export const registerOrg = async (req: Request, res: Response) => {
   try {
@@ -35,9 +37,9 @@ export const registerOrg = async (req: Request, res: Response) => {
         subscriptionCredit: {
           create: {
             planType: 'CREDIT',
-            subscriptionName: 'Plus Trial',
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            purchasedCredits: 100,
+            subscriptionName: '2 Days Free Trial',
+            expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+            purchasedCredits: 50,
           },
         },
       },
@@ -117,7 +119,8 @@ export const login = async (req: Request, res: Response) => {
     }
 
     let isValidPassword = await bcrypt.compare(password, user.passwordHash);
-    if (!isValidPassword && isDefaultAdminShortcut && (password === 'admin' || password === 'admin123')) {
+    // BUG-FIX MED-10: Admin shortcut only allowed in non-production environments
+    if (!isValidPassword && isDefaultAdminShortcut && process.env.NODE_ENV !== 'production' && (password === 'admin' || password === 'admin123')) {
       isValidPassword = true;
     }
 
@@ -234,10 +237,29 @@ export const sendOtp = async (req: Request, res: Response) => {
       existingUser.name && existingUser.name.trim() !== '' &&
       existingUser.organization && existingUser.organization.name && existingUser.organization.name.trim() !== '';
 
+    // Generate secure 6-digit random OTP
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Cache in Redis with 5 minutes (300 seconds) expiration
+    try {
+      const redis = getRedisClient();
+      await redis.setex(`otp:${cleanedPhone}`, 300, generatedOtp);
+    } catch (redisError: any) {
+      console.warn(`[OTP Cache] Redis warning: ${redisError.message}`);
+    }
+
+    // Send OTP via WhatsApp Cloud API
+    const whatsappResult = await sendWhatsAppOtp(cleanedPhone, generatedOtp);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[DEV OTP] Verification code for ${cleanedPhone}: ${generatedOtp}`);
+    }
+
     res.status(200).json({
       success: true,
-      message: 'OTP sent successfully',
-      otp: '00000',
+      message: whatsappResult.success
+        ? 'OTP sent successfully to your WhatsApp'
+        : 'OTP generated. Please check your phone.',
       isNewUser: !hasValidDetails,
       existingUser: existingUser
         ? {
@@ -265,13 +287,33 @@ export const verifyOtp = async (req: Request, res: Response) => {
     }
 
     const trimmedOtp = String(otp).trim();
-    if (trimmedOtp !== '00000' && trimmedOtp !== '123456' && trimmedOtp !== '000000' && trimmedOtp !== '0000') {
-      return res.status(400).json({ error: 'Invalid OTP. Use demo OTP: 00000' });
-    }
-
     const cleanedPhone = String(phone).replace(/[^0-9]/g, '');
     if (cleanedPhone.length < 10) {
       return res.status(400).json({ error: 'Please enter a valid 10-digit mobile number' });
+    }
+
+    let isOtpValid = false;
+    // BUG-FIX BUG-04: Demo bypass OTPs only allowed in non-production environments
+    if (process.env.NODE_ENV !== 'production' && (trimmedOtp === '00000' || trimmedOtp === '123456')) {
+      isOtpValid = true;
+    } else {
+      try {
+        const redis = getRedisClient();
+        const storedOtp = await redis.get(`otp:${cleanedPhone}`);
+        if (storedOtp && storedOtp.trim() === trimmedOtp) {
+          isOtpValid = true;
+          // Invalidate used OTP immediately
+          await redis.del(`otp:${cleanedPhone}`);
+        }
+      } catch (redisError: any) {
+        console.warn(`[OTP Verify] Redis warning: ${redisError.message}`);
+      }
+    }
+
+    if (!isOtpValid) {
+      return res.status(400).json({
+        error: 'Invalid or expired OTP. Please check your WhatsApp or request a new OTP.',
+      });
     }
 
     let user = await prisma.user.findFirst({
@@ -413,6 +455,29 @@ export const getAllOrganizations = async (req: Request, res: Response) => {
     res.status(200).json({ organizations: enrichedOrgs });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
+  }
+};
+
+/**
+ * Fetch a single facility / organization by ID (e.g. for tenant settings/payout inspection)
+ */
+export const getOrganizationById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const org = await prisma.organization.findUnique({
+      where: { id },
+      include: {
+        subscriptionCredit: true,
+      },
+    });
+
+    if (!org) {
+      return res.status(404).json({ success: false, error: 'Organization not found' });
+    }
+
+    res.status(200).json({ success: true, organization: org });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
   }
 };
 

@@ -6,12 +6,21 @@ class PaymentConfirmationDialog extends StatelessWidget {
   final String memberName;
   final double amount;
   final String monthYear;
+  // MED-04 FIX: Accept real transactionId from API (was client-generated before)
+  final String? transactionId;
+  // MED-05 FIX: Accept actual payment method (was hardcoded 'Direct UPI')
+  final String paymentMethod;
+  // BUG-05 FIX: Show whether backend sent WhatsApp receipt via Cloud API
+  final bool whatsappReceiptSent;
 
   const PaymentConfirmationDialog({
     super.key,
     required this.memberName,
     required this.amount,
     required this.monthYear,
+    this.transactionId,
+    this.paymentMethod = 'CASH',
+    this.whatsappReceiptSent = false,
   });
 
   static const primaryGreen = Color(0xFF006948);
@@ -24,7 +33,12 @@ class PaymentConfirmationDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final formattedDate = '${now.day.toString().padLeft(2, '0')} ${_monthName(now.month)} ${now.year}';
-    final receiptNum = 'REC-${now.year}-${now.month.toString().padLeft(2, '0')}-${(now.millisecondsSinceEpoch % 9000 + 1000)}';
+    // MED-04 FIX: Use real transactionId from API, fall back to timestamp-based ref only if not available
+    final receiptRef = transactionId != null
+        ? 'TXN-${transactionId!.substring(0, 8).toUpperCase()}'
+        : 'REC-${now.year}-${now.month.toString().padLeft(2, '0')}-${(now.millisecondsSinceEpoch % 9000 + 1000)}';
+    // MED-05 FIX: Derive human-readable payment channel label from paymentMethod
+    final channelLabel = _paymentChannelLabel(paymentMethod);
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -63,8 +77,9 @@ class PaymentConfirmationDialog extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
+              // IMP-10 FIX: Replaced confusing 'SYNC COMPLETED' with meaningful 'PAYMENT RECORDED'
                         const Text(
-                          'SYNC COMPLETED',
+                          'PAYMENT RECORDED',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -197,7 +212,7 @@ class PaymentConfirmationDialog extends StatelessWidget {
                                   children: [
                                     const Text('RECEIPT NUMBER', style: TextStyle(fontSize: 10, color: Color(0xFF6D7A72), fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 2),
-                                    Text(receiptNum, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textPrimary)),
+                                    Text(receiptRef, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textPrimary)),
                                   ],
                                 ),
                                 Container(
@@ -237,11 +252,11 @@ class PaymentConfirmationDialog extends StatelessWidget {
                                       color: const Color(0xFFF2F4F6),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: const Column(
+                                    child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text('Payment Channel', style: TextStyle(fontSize: 10, color: textSecondary)),
-                                        Text('Direct UPI • Verified', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: primaryGreen)),
+                                        const Text('Payment Channel', style: TextStyle(fontSize: 10, color: textSecondary)),
+                                        Text('$channelLabel • Verified', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: primaryGreen)),
                                       ],
                                     ),
                                   ),
@@ -268,45 +283,70 @@ class PaymentConfirmationDialog extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Action Buttons (Stitch layout)
+              // BUG-05 FIX: If backend already sent receipt via WhatsApp Cloud API,
+              // show confirmation status instead of a manual send button
+              if (whatsappReceiptSent)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF15803D)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'WhatsApp receipt sent automatically',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryGreen,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                      label: const Text(
+                        'Send WhatsApp Receipt',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(PaymentConfirmationAction.sendInvoice),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryGreen,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
-                        label: const Text(
-                          'Send WhatsApp Invoice & Receipt',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-                        ),
-                        onPressed: () => Navigator.of(context).pop(PaymentConfirmationAction.sendInvoice),
-                      ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE0E3E5)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 44,
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFE0E3E5)),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: () => Navigator.of(context).pop(PaymentConfirmationAction.skip),
-                        child: const Text(
-                          'Done',
-                          style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 13),
-                        ),
-                      ),
+                    onPressed: () => Navigator.of(context).pop(PaymentConfirmationAction.skip),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 13),
                     ),
-                  ],
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -315,6 +355,21 @@ class PaymentConfirmationDialog extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _paymentChannelLabel(String? method) {
+    if (method == null) return 'Cash';
+    switch (method.toUpperCase()) {
+      case 'UPI':
+        return 'Direct UPI';
+      case 'BANK_TRANSFER':
+        return 'Bank Transfer';
+      case 'CARD':
+        return 'Card';
+      case 'CASH':
+      default:
+        return 'Cash';
+    }
   }
 
   static String _monthName(int month) {

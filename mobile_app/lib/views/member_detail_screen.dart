@@ -72,28 +72,155 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
     }
   }
 
-  Future<void> _handleMarkPaid(dynamic schedule) async {
+  Future<void> _handleMarkPaid(dynamic schedule, {String paymentMethod = 'CASH'}) async {
     final amount = (schedule['amount'] as num?)?.toDouble() ?? 0.0;
-    final success = await ApiService.markAsPaid(schedule['id'], amount);
-    if (success) {
+
+    // MED-03 FIX: Show error snackbar on failure (was silently ignoring errors before)
+    final result = await ApiService.markAsPaid(
+      schedule['id'],
+      amount,
+      paymentMethod: paymentMethod,
+    );
+
+    if (result['success'] != true) {
       if (!mounted) return;
-      final action = await showDialog<PaymentConfirmationAction>(
-        context: context,
-        builder: (ctx) => PaymentConfirmationDialog(
-          memberName: _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident',
-          amount: amount,
-          monthYear: schedule['monthYear'] ?? 'Current Month',
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to record payment: ${result['error'] ?? 'Unknown error'}'),
+          backgroundColor: errorRed,
+          behavior: SnackBarBehavior.floating,
         ),
       );
+      return;
+    }
 
-      if (action == PaymentConfirmationAction.sendInvoice || action == PaymentConfirmationAction.sendPersonalMessage) {
-        final phone = _memberDetails?['phone'] ?? widget.member['phone'] ?? '';
-        final name = _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident';
-        final msg = 'Hi $name, thank you for your payment of ₹${amount.toInt()} for ${schedule['monthYear']}.';
-        await _openWhatsApp(phone, msg);
+    if (!mounted) return;
+
+    // MED-04 FIX: Use real transactionId from API response
+    // MED-05 FIX: Pass paymentMethod to dialog for accurate display
+    final transactionId = result['transaction']?['id'] as String?;
+    final whatsappSent = result['whatsappReceiptSent'] == true;
+
+    final action = await showDialog<PaymentConfirmationAction>(
+      context: context,
+      builder: (ctx) => PaymentConfirmationDialog(
+        memberName: _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident',
+        amount: amount,
+        monthYear: schedule['monthYear'] ?? 'Current Month',
+        transactionId: transactionId,
+        paymentMethod: paymentMethod,
+        whatsappReceiptSent: whatsappSent,
+      ),
+    );
+
+    // BUG-05 FIX: Wire "Send WhatsApp Receipt" button to Meta Cloud API endpoint
+    if (action == PaymentConfirmationAction.sendInvoice) {
+      final receiptResult = await ApiService.sendPaymentReceipt(
+        scheduleId: schedule['id'],
+        transactionId: transactionId,
+      );
+      if (mounted) {
+        final success = receiptResult?['success'] == true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'Digital receipt sent via WhatsApp Cloud API!'
+                  : (receiptResult?['message'] ?? 'Unable to send WhatsApp receipt via Cloud API'),
+            ),
+            backgroundColor: success ? primaryGreen : errorRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
+    }
 
-      await _loadMemberData();
+    await _loadMemberData();
+  }
+
+  // IMP-03 FIX: Handler for sending individual rent reminder via WhatsApp Cloud API
+  Future<void> _handleSendReminder(dynamic schedule) async {
+    final memberName = _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Sending WhatsApp rent reminder to $memberName...'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    final res = await ApiService.sendPaymentReminder(schedule['id']);
+    if (!mounted) return;
+
+    if (res != null && res['success'] == true) {
+      final isCloudSent = res['whatsappApiSent'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isCloudSent
+                ? 'Reminder sent to $memberName via WhatsApp Cloud API!'
+                : (res['message'] ?? 'Reminder generated. Payment link created.'),
+          ),
+          backgroundColor: primaryGreen,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res?['error'] ?? 'Could not send WhatsApp reminder. Check credits.'),
+          backgroundColor: errorRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleSendPaymentLink(dynamic schedule) async {
+    final memberName = _memberDetails?['fullName'] ?? widget.member['fullName'] ?? 'Resident';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Generating & sending payment link to $memberName on WhatsApp...'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    final res = await ApiService.sendPaymentReminder(schedule['id']);
+    if (!mounted) return;
+
+    if (res != null && res['success'] == true) {
+      final isCloudSent = res['whatsappApiSent'] == true;
+      final directUrl = res['directWhatsAppUrl'];
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isCloudSent
+                ? 'Payment link sent to $memberName via WhatsApp Cloud API!'
+                : (res['message'] ?? 'Payment link generated.'),
+          ),
+          backgroundColor: primaryGreen,
+          behavior: SnackBarBehavior.floating,
+          action: directUrl != null && !isCloudSent
+              ? SnackBarAction(
+                  label: 'Open WhatsApp',
+                  textColor: Colors.white,
+                  onPressed: () => launchUrl(Uri.parse(directUrl), mode: LaunchMode.externalApplication),
+                )
+              : null,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res?['error'] ?? 'Could not send payment link. Check credits.'),
+          backgroundColor: errorRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -550,6 +677,26 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
             const SizedBox(height: 10),
 
             // Actions Row (Stitch buttons)
+            if (!isPaid && !isFrozen) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF25D366), // WhatsApp Emerald
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                  ),
+                  icon: const Icon(Icons.link_rounded, size: 18, color: Colors.white),
+                  label: const Text(
+                    'Send Payment Link',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                  ),
+                  onPressed: () => _handleSendPaymentLink(schedule),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 if (!isPaid && !isFrozen) ...[
@@ -569,9 +716,20 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF25D366)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 14, color: Color(0xFF25D366)),
+                    label: const Text('Remind', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF25D366))),
+                    onPressed: () => _handleSendReminder(schedule),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Color(0xFFE0E3E5)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     ),
                     icon: const Icon(Icons.ac_unit_rounded, size: 14, color: Color(0xFF0284C7)),
                     label: const Text('Freeze', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0284C7))),

@@ -3,52 +3,52 @@ import { prisma } from '../index';
 
 export const SEEDED_DEFAULT_TEMPLATES = [
   {
-    templateId: '',
+    templateId: '2573338346420823',
     name: 'Admin Login OTP',
     templateType: 'OTP',
     category: 'AUTHENTICATION',
     language: 'en',
-    messageText: 'Your RentTrack verification code is {{1}}. This code is valid for {{2}} minutes. Please do not share this OTP with anyone. - RentTrack Secure Login',
+    messageText: 'TrackMyRent Update: Your receipt is {{1}}. Thank you,TrackMyRent',
   },
   {
-    templateId: '',
-    name: 'Rent / Fee Due Reminder',
-    templateType: 'RENT_REMINDER',
-    category: 'UTILITY',
-    language: 'en',
-    messageText: 'Hello {{1}}, your rent/fee payment of ₹{{2}} for {{3}} is scheduled for {{4}}. You can pay directly to our account via: {{5}} . Thank you!',
-  },
-  {
-    templateId: '',
-    name: 'Payment Receipt & Confirmation',
-    templateType: 'PAYMENT_RECEIPT',
-    category: 'UTILITY',
-    language: 'en',
-    messageText: 'Dear {{1}}, we have received your payment of ₹{{2}} for {{3}}. Receipt No: {{4}}. Download official receipt here: {{5}}',
-  },
-  {
-    templateId: '',
-    name: 'New Member Welcome',
-    templateType: 'MEMBER_WELCOME',
-    category: 'MARKETING',
-    language: 'en',
-    messageText: 'Welcome {{1}} to {{2}}! Your membership plan \'{{3}}\' is active. We are thrilled to have you onboard.',
-  },
-  {
-    templateId: '',
-    name: 'Plan Renewal Reminder',
-    templateType: 'RENEWAL_REMINDER',
-    category: 'UTILITY',
-    language: 'en',
-    messageText: 'Hi {{1}}, your membership plan \'{{2}}\' will expire on {{3}}. Please renew in advance to continue enjoying uninterrupted services.',
-  },
-  {
-    templateId: '',
+    templateId: '1675946917194699',
     name: 'Month / Account Freeze Notice',
     templateType: 'MONTH_FREEZE',
     category: 'UTILITY',
     language: 'en',
-    messageText: 'Hi {{1}}, your membership/rent account has been placed on hold from {{2}} to {{3}} as requested. Contact admin for any questions.',
+    messageText: 'Dear {{1}}, As requested, your membership billing for {{2}} has been put on freeze. Note: {{3}}. This month\'s dues are waived and will not be counted as pending. Please let us know when you are ready to resume. Thank you!',
+  },
+  {
+    templateId: '840152119154400',
+    name: 'Plan Renewal Reminder',
+    templateType: 'RENEWAL_REMINDER',
+    category: 'UTILITY',
+    language: 'en',
+    messageText: 'Dear {{1}}, Your {{2}} membership at {{3}} will expire on {{4}}. To continue without interruption, please renew your plan using the link below: {{5}}. Thank you!',
+  },
+  {
+    templateId: '2332169737525031',
+    name: 'New Member Welcome',
+    templateType: 'MEMBER_WELCOME',
+    category: 'MARKETING',
+    language: 'en',
+    messageText: 'Hello {{1}}, Welcome to {{2}}! Your membership plan ({{3}}) is active starting from {{4}}. Your monthly payment due date is the {{5}} of each month. Feel free to reach out if you have any questions. We are glad to have you with us!',
+  },
+  {
+    templateId: '1081300614678972',
+    name: 'Payment Receipt & Confirmation',
+    templateType: 'PAYMENT_RECEIPT',
+    category: 'UTILITY',
+    language: 'en',
+    messageText: 'Dear {{1}}, We have successfully received your payment of ₹{{3}} for {{2}} via {{4}}. Click the link below to view and download your official digital receipt: {{5}}. Thank you for choosing {{6}}!. Have an amazing day!',
+  },
+  {
+    templateId: '1813194829858504',
+    name: 'Rent / Fee Due Reminder',
+    templateType: 'RENT_REMINDER',
+    category: 'UTILITY',
+    language: 'en',
+    messageText: 'Hello there, You have received a fee payment request of ₹{{1}} from {{2}}. Payment details: Name: {{3}}, Description: {{4}}. Tap below to securely complete the payment. If already paid, kindly ignore.',
   },
 ];
 
@@ -70,6 +70,19 @@ export const getWhatsAppTemplates = async (req: Request, res: Response) => {
             isActive: true,
           },
         });
+      }
+    } else {
+      // Auto-sync approved template IDs for default system templates
+      for (const tpl of SEEDED_DEFAULT_TEMPLATES) {
+        const match = await prisma.whatsAppTemplate.findFirst({
+          where: { organizationId: null, templateType: tpl.templateType },
+        });
+        if (match && (!match.templateId || match.templateId !== tpl.templateId)) {
+          await prisma.whatsAppTemplate.update({
+            where: { id: match.id },
+            data: { templateId: tpl.templateId },
+          });
+        }
       }
     }
 

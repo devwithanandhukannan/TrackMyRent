@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
 import '../services/api_service.dart';
 
@@ -99,9 +100,35 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
       orElse: () => _plans.first,
     );
 
-    try {
-      await ApiService.subscribeAppPlan(selectedPlan.id);
-    } catch (_) {}
+    if (selectedPlan.price > 0) {
+      try {
+        final orderRes = await ApiService.createSubscriptionRazorpayOrder(
+          planId: selectedPlan.id,
+          planName: selectedPlan.name,
+          amount: selectedPlan.price,
+          credits: selectedPlan.whatsappCredits,
+        );
+        if (orderRes != null && orderRes['shortUrl'] != null) {
+          final uri = Uri.parse(orderRes['shortUrl'] as String);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+          }
+          final statusRes = await ApiService.getPaymentLinkStatus(orderRes['paymentLinkId'] ?? '');
+          if (statusRes != null && statusRes['status'] == 'PAID') {
+            await ApiService.verifySubscriptionOrCreditPayment(
+              type: 'SUBSCRIPTION',
+              planName: selectedPlan.name,
+              credits: selectedPlan.whatsappCredits,
+              paymentLinkId: orderRes['paymentLinkId'],
+            );
+          }
+        }
+      } catch (_) {}
+    } else {
+      try {
+        await ApiService.subscribeAppPlan(selectedPlan.id);
+      } catch (_) {}
+    }
 
     if (!mounted) return;
 
@@ -152,7 +179,7 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Start with the 30 day free trial and upgrade anytime when you are ready.',
+                'Start with our free trial and upgrade anytime when you are ready.',
                 style: TextStyle(
                   fontSize: 14,
                   color: Color(0xFF64748B),
@@ -328,7 +355,7 @@ class _AppPlanSelectionScreenState extends State<AppPlanSelectionScreen> {
                     ),
                   ),
                   child: Text(
-                    selectedPlan.isFreeTrial ? 'Start 30 Day Free Trial' : 'Continue with ${selectedPlan.name}',
+                    selectedPlan.isFreeTrial ? 'Start ${selectedPlan.name}' : 'Continue with ${selectedPlan.name}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,

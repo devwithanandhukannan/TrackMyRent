@@ -33,9 +33,72 @@ export const webhookWorker = new Worker(
       const notes = payment?.notes || {};
       const scheduleId = notes?.scheduleId;
 
+      // Mark any associated PaymentLinkRecord as PAID
+      const linkEntityId = payload?.paymentLink?.entity?.id || payment?.payment_link_id;
+      if (linkEntityId || scheduleId) {
+        await prisma.paymentLinkRecord.updateMany({
+          where: {
+            OR: [
+              ...(linkEntityId ? [{ linkId: linkEntityId }] : []),
+              ...(scheduleId ? [{ scheduleId }] : []),
+            ],
+            status: { not: 'PAID' },
+          },
+          data: {
+            status: 'PAID',
+            paidAt: new Date(),
+            paymentId: paymentId || undefined,
+          },
+        });
+      }
+
+      // If it is a subscription or credit package purchase from notes
+      if (notes?.type === 'SUBSCRIPTION' && notes?.organizationId) {
+        const numCredits = Number(notes.credits) || 0;
+        await prisma.subscriptionCredit.upsert({
+          where: { organizationId: notes.organizationId },
+          update: {
+            planType: 'CREDIT',
+            subscriptionName: notes.planName || 'Pro Plan',
+            purchasedCredits: { increment: numCredits },
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+          create: {
+            organizationId: notes.organizationId,
+            planType: 'CREDIT',
+            subscriptionName: notes.planName || 'Pro Plan',
+            purchasedCredits: numCredits > 0 ? numCredits : 100,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+        console.log(`[WebhookWorker] Subscription activated for org ${notes.organizationId} via payment ${paymentId}`);
+        return { status: 'SUCCESS', type: 'SUBSCRIPTION', organizationId: notes.organizationId };
+      }
+
+      // BUG-FIX BUG-07: Handle both 'CREDIT_TOPUP' (created by paymentController) and
+      // 'CREDIT_PACKAGE' (legacy/webhook format) to ensure credits are always applied.
+      if ((notes?.type === 'CREDIT_TOPUP' || notes?.type === 'CREDIT_PACKAGE') && notes?.organizationId) {
+        const numCredits = Number(notes.credits) || 0;
+        await prisma.subscriptionCredit.upsert({
+          where: { organizationId: notes.organizationId },
+          update: {
+            purchasedCredits: { increment: numCredits },
+          },
+          create: {
+            organizationId: notes.organizationId,
+            planType: 'CREDIT',
+            subscriptionName: 'Standard Plan',
+            purchasedCredits: numCredits,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+        console.log(`[WebhookWorker] Added ${numCredits} credits to org ${notes.organizationId} via payment ${paymentId}`);
+        return { status: 'SUCCESS', type: notes.type, organizationId: notes.organizationId };
+      }
+
       if (!scheduleId) {
-        console.warn(`[WebhookWorker] No scheduleId found in webhook notes for payment ${paymentId}`);
-        return { status: 'SKIPPED', reason: 'No scheduleId provided' };
+        console.warn(`[WebhookWorker] No scheduleId or subscription found in webhook for payment ${paymentId}`);
+        return { status: 'SKIPPED', reason: 'No scheduleId or subscription type provided' };
       }
 
       // Check if transaction with this payment ID already recorded (Idempotency)

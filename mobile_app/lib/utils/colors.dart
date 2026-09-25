@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class AppColors {
   // Stitch Design System Colors (Emerald & Slate Property OS)
   static const Color primary = Color(0xFF006948);
+  static const Color emerald = Color(0xFF059669);
   static const Color primaryContainer = Color(0xFF00855D);
   static const Color primaryDark = Color(0xFF005137);
   static const Color primaryLight = Color(0xFF68DBA9);

@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import { webhookQueue } from '../queues/webhookQueue';
 import {
   generatePaymentSchedules,
   markAsPaid,
@@ -14,23 +15,54 @@ import {
   createCreditPackageRazorpayOrder,
   verifySubscriptionOrCreditPayment,
   sendPaymentReminder,
+  sendPaymentReceipt,
+  getPaymentLinkStatus,
+  renderHostedPaymentGateway,
 } from '../controllers/paymentController';
+import { authMiddleware } from '../middleware/authMiddleware';
 
 const router = Router();
 
-router.post('/generate-schedules', generatePaymentSchedules);
-router.post('/mark-paid', markAsPaid);
-router.post('/mark-unpaid', markAsUnpaid);
-router.post('/freeze', freezeMonth);
-router.post('/unfreeze', unfreezeMonth);
-router.get('/pending/:memberId', getPendingDues);
-router.get('/transactions', getTransactions);
-router.get('/schedules/:memberId', getMemberSchedules);
-router.post('/razorpay/create-order', createRazorpayPaymentOrder);
-router.post('/razorpay/verify-payment', verifyRazorpayPayment);
-router.post('/razorpay/subscription-order', createSubscriptionRazorpayOrder);
-router.post('/razorpay/credit-order', createCreditPackageRazorpayOrder);
-router.post('/razorpay/verify-subscription', verifySubscriptionOrCreditPayment);
-router.post('/send-reminder', sendPaymentReminder);
+// Facility Admin & Internal Payment Actions (Protected by Auth Middleware)
+router.post('/generate-schedules', authMiddleware, generatePaymentSchedules);
+router.post('/mark-paid', authMiddleware, markAsPaid);
+router.post('/mark-unpaid', authMiddleware, markAsUnpaid);
+router.post('/freeze', authMiddleware, freezeMonth);
+router.post('/unfreeze', authMiddleware, unfreezeMonth);
+router.get('/pending/:memberId', authMiddleware, getPendingDues);
+router.get('/transactions', authMiddleware, getTransactions);
+router.get('/schedules/:memberId', authMiddleware, getMemberSchedules);
+router.post('/razorpay/create-order', authMiddleware, createRazorpayPaymentOrder);
+router.post('/razorpay/verify-payment', authMiddleware, verifyRazorpayPayment);
+router.post('/razorpay/subscription-order', authMiddleware, createSubscriptionRazorpayOrder);
+router.post('/razorpay/credit-order', authMiddleware, createCreditPackageRazorpayOrder);
+router.post('/razorpay/verify-subscription', authMiddleware, verifySubscriptionOrCreditPayment);
+router.post('/send-reminder', authMiddleware, sendPaymentReminder);
+router.post('/send-receipt', authMiddleware, sendPaymentReceipt);
+
+// Public routes for tenants / members paying via UPI or checking link validity
+router.get('/link-status/:linkId', getPaymentLinkStatus);
+router.get('/pay/:id', renderHostedPaymentGateway);
+
+// Public Razorpay Webhook Endpoint
+router.post('/webhook', async (req: Request, res: Response) => {
+  try {
+    const event = req.body.event || 'unknown';
+    const payload = req.body.payload || req.body;
+
+    const job = await webhookQueue.add('razorpay-event', {
+      event,
+      payload,
+      receivedAt: new Date().toISOString(),
+    });
+
+    res.status(200).json({
+      received: true,
+      queuedJobId: job.id,
+    });
+  } catch (error) {
+    res.status(500).json({ received: false, error: (error as Error).message });
+  }
+});
 
 export default router;

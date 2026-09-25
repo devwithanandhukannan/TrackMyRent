@@ -78,6 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       final plansData = await ApiService.fetchAppPlans();
       final creditPkgsData = await ApiService.fetchCreditPackages();
       final sessionData = await ApiService.getSessionData();
+      final payoutData = await ApiService.fetchTenantPayout();
 
       setState(() {
         _customFields = fieldsData;
@@ -92,6 +93,20 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
           _profileOrgNameController.text = sessionData['orgName']!;
         }
         _profilePhone = sessionData['phone'] ?? '';
+
+        if (_upiController.text.isEmpty && payoutData['bankUpiId'] != null) {
+          _upiController.text = payoutData['bankUpiId']!;
+        }
+        if (_accNumberController.text.isEmpty && payoutData['bankAccountNumber'] != null) {
+          _accNumberController.text = payoutData['bankAccountNumber']!;
+        }
+        if (_ifscController.text.isEmpty && payoutData['bankIfsc'] != null) {
+          _ifscController.text = payoutData['bankIfsc']!;
+        }
+        if (_accNameController.text.isEmpty && payoutData['bankAccountName'] != null) {
+          _accNameController.text = payoutData['bankAccountName']!;
+        }
+
         _isLoading = false;
       });
     } catch (e) {
@@ -387,6 +402,27 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('Payment of ₹${price.toInt()} on Razorpay for $planName.'),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.timer_outlined, size: 16, color: Color(0xFFD97706)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Link expires in 10 minutes. Complete payment promptly.',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 14),
               ElevatedButton.icon(
                 icon: const Icon(Icons.open_in_new, size: 16),
@@ -420,14 +456,15 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
               onPressed: () async {
                 Navigator.pop(dialogCtx);
                 setState(() => _actionLoading = true);
-                final verified = await ApiService.verifySubscriptionOrCreditPayment(
+                final res = await ApiService.verifySubscriptionOrCreditPayment(
                   type: 'SUBSCRIPTION',
                   planName: planName,
                   credits: credits,
+                  paymentLinkId: orderRes['paymentLinkId'],
                 );
                 setState(() => _actionLoading = false);
                 if (mounted) {
-                  if (verified) {
+                  if (res['success'] == true) {
                     await _loadSettingsData();
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -436,10 +473,51 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                         backgroundColor: AppColors.primary,
                       ),
                     );
-                  } else {
+                  } else if (res['code'] == 'LINK_EXPIRED' || res['statusCode'] == 410) {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        title: const Row(
+                          children: [
+                            Icon(Icons.timer_off_rounded, color: Color(0xFFD97706)),
+                            SizedBox(width: 8),
+                            Text('Payment Link Expired', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        content: const Text(
+                          'This payment link was valid for 10 minutes and has expired. No funds were debited.\n\nWould you like to generate a fresh link now?',
+                          style: TextStyle(fontSize: 13, height: 1.4),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss')),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _subscribeToPlan(plan);
+                            },
+                            child: const Text('Generate New Link', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else if (res['code'] == 'ALREADY_PAID') {
+                    await _loadSettingsData();
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Could not verify payment yet. Please ensure payment is completed.'),
+                        content: Text('✅ Payment already processed and active!'),
+                        backgroundColor: AppColors.emerald,
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(res['error'] ?? 'Could not verify payment yet. Please ensure payment is completed.'),
                         backgroundColor: AppColors.appleRed,
                       ),
                     );
@@ -453,8 +531,9 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       );
     } else {
       if (mounted) {
+        final errMsg = orderRes?['error'] ?? 'Unable to initiate Razorpay checkout. Please check connection.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to initiate Razorpay checkout. Please check connection.'), backgroundColor: AppColors.appleRed),
+          SnackBar(content: Text(errMsg), backgroundColor: AppColors.appleRed),
         );
       }
     }
@@ -501,6 +580,27 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('Payment of ₹${cleanPrice.toInt()} on Razorpay for $count WhatsApp Credits.'),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.timer_outlined, size: 16, color: Color(0xFFD97706)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Link expires in 10 minutes. Complete payment promptly.',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 14),
               ElevatedButton.icon(
                 icon: const Icon(Icons.open_in_new, size: 16),
@@ -534,13 +634,14 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
               onPressed: () async {
                 Navigator.pop(dialogCtx);
                 setState(() => _actionLoading = true);
-                final verified = await ApiService.verifySubscriptionOrCreditPayment(
+                final res = await ApiService.verifySubscriptionOrCreditPayment(
                   type: 'CREDIT_TOPUP',
                   credits: count,
+                  paymentLinkId: orderRes['paymentLinkId'],
                 );
                 setState(() => _actionLoading = false);
                 if (mounted) {
-                  if (verified) {
+                  if (res['success'] == true) {
                     await _loadSettingsData();
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -549,10 +650,51 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                         backgroundColor: AppColors.primary,
                       ),
                     );
-                  } else {
+                  } else if (res['code'] == 'LINK_EXPIRED' || res['statusCode'] == 410) {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        title: const Row(
+                          children: [
+                            Icon(Icons.timer_off_rounded, color: Color(0xFFD97706)),
+                            SizedBox(width: 8),
+                            Text('Payment Link Expired', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        content: const Text(
+                          'This payment link was valid for 10 minutes and has expired. No funds were debited.\n\nWould you like to generate a fresh link now?',
+                          style: TextStyle(fontSize: 13, height: 1.4),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss')),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _buyCredits(count, priceStr);
+                            },
+                            child: const Text('Generate New Link', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else if (res['code'] == 'ALREADY_PAID') {
+                    await _loadSettingsData();
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Could not verify payment yet. Please ensure payment is completed.'),
+                        content: Text('✅ Credits already added for this transaction!'),
+                        backgroundColor: AppColors.emerald,
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(res['error'] ?? 'Could not verify payment yet. Please ensure payment is completed.'),
                         backgroundColor: AppColors.appleRed,
                       ),
                     );
@@ -1079,9 +1221,12 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                           children: [
                             Row(
                               children: [
-                                const Text(
-                                  '100% Direct UPI Settlement',
-                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                                const Flexible(
+                                  child: Text(
+                                    '100% Direct UPI Settlement',
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                                 const SizedBox(width: 6),
                                 Container(
@@ -1113,26 +1258,33 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
+                      Flexible(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'Instant Peer-to-Peer Routing',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            const Flexible(
+                              child: Text(
+                                'Instant Peer-to-Peer Routing',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.primary),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       const Text(
                         'Standard NPCI UPI 2.0',
-                        style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                        style: TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -1162,10 +1314,14 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Business / Landlord UPI ID (VPA) *',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      const Expanded(
+                        child: Text(
+                          'Business / Landlord UPI ID (VPA) *',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
@@ -1456,23 +1612,32 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Text(planName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.textPrimary)),
-                              if (tag != null && tag.isNotEmpty) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(color: AppColors.appleGreenBg, borderRadius: BorderRadius.circular(6)),
-                                  child: Text(tag, style: const TextStyle(color: AppColors.appleGreen, fontSize: 10, fontWeight: FontWeight.bold)),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    planName,
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.textPrimary),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
+                                if (tag != null && tag.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(color: AppColors.appleGreenBg, borderRadius: BorderRadius.circular(6)),
+                                    child: Text(tag, style: const TextStyle(color: AppColors.appleGreen, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           Text(
                             price == 0 ? 'FREE' : '₹${price.toInt()}',
                             style: TextStyle(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.w900,
                               color: price == 0 ? AppColors.appleGreen : AppColors.textPrimary,
                             ),
@@ -1481,28 +1646,38 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                       ),
                       if (desc.isNotEmpty) ...[
                         const SizedBox(height: 4),
-                        Text(desc, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                        Text(desc, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
                       ],
                       const SizedBox(height: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(color: AppColors.mintBg, borderRadius: BorderRadius.circular(8)),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: AppColors.primary),
-                                const SizedBox(width: 4),
-                                Text('$credits Credits Included', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12, fontWeight: FontWeight.bold)),
-                              ],
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(color: AppColors.mintBg, borderRadius: BorderRadius.circular(8)),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.chat_bubble_outline_rounded, size: 13, color: AppColors.primary),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      '$credits Credits Included',
+                                      style: const TextStyle(color: AppColors.primaryDark, fontSize: 11, fontWeight: FontWeight.bold),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           if (isCurrentPlan)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(8)),
-                              child: const Text('Current Plan', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                              child: const Text('Current Plan', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
                             )
                           else
                             ElevatedButton(
@@ -1510,10 +1685,10 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                                 backgroundColor: AppColors.primary,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                               ),
                               onPressed: _actionLoading ? null : () => _subscribeToPlan(plan),
-                              child: const Text('Subscribe', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                              child: const Text('Subscribe', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
                             ),
                         ],
                       ),

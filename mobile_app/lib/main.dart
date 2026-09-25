@@ -607,20 +607,25 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           subName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             color: AppColors.onSurface,
                           ),
                         ),
-                        const SizedBox(width: 6),
                         Text(
-                          isTrial ? '• 2-Days Trial Mode' : '• Active Plan',
-                          style: const TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+                          isTrial ? '2-Days Trial Mode' : 'Active Plan',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -675,10 +680,15 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Active Members',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            const Expanded(
+                              child: Text(
+                                'Active Members',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                              ),
                             ),
+                            const SizedBox(width: 4),
                             Container(
                               width: 28,
                               height: 28,
@@ -733,10 +743,15 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Collected',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            const Expanded(
+                              child: Text(
+                                'Collected',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                              ),
                             ),
+                            const SizedBox(width: 4),
                             Container(
                               width: 28,
                               height: 28,
@@ -794,10 +809,15 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Pending Dues',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            const Expanded(
+                              child: Text(
+                                'Pending Dues',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                              ),
                             ),
+                            const SizedBox(width: 4),
                             Container(
                               width: 28,
                               height: 28,
@@ -846,10 +866,15 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Overdue',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                            const Expanded(
+                              child: Text(
+                                'Overdue',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                              ),
                             ),
+                            const SizedBox(width: 4),
                             Container(
                               width: 28,
                               height: 28,
@@ -870,15 +895,19 @@ class _HomeScreenViewState extends State<HomeScreenView> {
                             ),
                             const SizedBox(width: 6),
                             if (overdueMembers.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppColors.appleAmberBg,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Text(
-                                  'Action Needed',
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.appleAmber),
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.appleAmberBg,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    'Action Needed',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.appleAmber),
+                                  ),
                                 ),
                               ),
                           ],
@@ -923,14 +952,19 @@ class _HomeScreenViewState extends State<HomeScreenView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${displayedMembers.length} Residents & Members',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.onSurface,
+                Expanded(
+                  child: Text(
+                    '${displayedMembers.length} Residents & Members',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.onSurface,
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: _openAddMember,
                   style: ElevatedButton.styleFrom(

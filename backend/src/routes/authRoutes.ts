@@ -6,6 +6,7 @@ import {
   sendOtp,
   verifyOtp,
   getAllOrganizations,
+  getOrganizationById,
   updateTenantPayout,
   subscribeAppPlan,
   updateTenantProfile,
@@ -19,6 +20,7 @@ router.post('/customer-login', customerLogin);
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
 router.get('/organizations', getAllOrganizations);
+router.get('/organization/:id', getOrganizationById);
 router.put('/organization/:id/payout', updateTenantPayout);
 router.post('/organization/:id/subscribe-app-plan', subscribeAppPlan);
 router.put('/organization/:id/profile', updateTenantProfile);

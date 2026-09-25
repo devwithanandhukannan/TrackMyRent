@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../index';
+import { sendWhatsAppWelcomeMessage } from '../services/whatsappService';
 
 /**
  * Add a new Member / Tenant
@@ -83,10 +84,47 @@ export const createMember = async (req: Request, res: Response) => {
       });
     }
 
+    // Dispatch WhatsApp welcome message
+    let whatsappWelcomeSent = false;
+    if (member.phone) {
+      const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+      const joiningDateStr = new Date(member.joiningDate).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+      const dueDayStr = req.body.dueDayNumber
+        ? `${req.body.dueDayNumber}th`
+        : (selectedPlan.customDayNumber ? `${selectedPlan.customDayNumber}th` : '1st');
+
+      const waResult = await sendWhatsAppWelcomeMessage({
+        phone: member.phone,
+        memberName: member.fullName,
+        facilityName: org?.name || 'our facility',
+        planName: selectedPlan.name || 'Regular Plan',
+        joiningDate: joiningDateStr,
+        dueDay: dueDayStr,
+      });
+      whatsappWelcomeSent = waResult.success;
+
+      // Deduct 1 credit if sent
+      if (whatsappWelcomeSent && org) {
+        const subCredit = await prisma.subscriptionCredit.findUnique({ where: { organizationId: org.id } });
+        const now = new Date();
+        const isExpired = subCredit?.expiresAt && subCredit.expiresAt < now;
+        if (subCredit && !isExpired && (subCredit.purchasedCredits - subCredit.usedCredits) > 0) {
+          await prisma.subscriptionCredit.update({
+            where: { organizationId: org.id },
+            data: { usedCredits: { increment: 1 } },
+          });
+        }
+      }
+    }
+
     res.status(201).json({
       message: 'Member created successfully',
       member,
-      whatsappWelcomeTemplate: `Hello ${fullName}, welcome to our facility! Your membership plan is ${selectedPlan?.name || 'Default'}.`,
+      whatsappWelcomeSent,
     });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });

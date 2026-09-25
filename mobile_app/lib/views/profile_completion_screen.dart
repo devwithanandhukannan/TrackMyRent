@@ -132,11 +132,15 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
             if (await canLaunchUrl(uri)) {
               await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
             }
-            await ApiService.verifySubscriptionOrCreditPayment(
-              type: 'SUBSCRIPTION',
-              planName: selectedPlan['name'],
-              credits: credits,
-            );
+            final statusRes = await ApiService.getPaymentLinkStatus(orderRes['paymentLinkId'] ?? '');
+            if (statusRes != null && statusRes['status'] == 'PAID') {
+              await ApiService.verifySubscriptionOrCreditPayment(
+                type: 'SUBSCRIPTION',
+                planName: selectedPlan['name'],
+                credits: credits,
+                paymentLinkId: orderRes['paymentLinkId'],
+              );
+            }
           }
         } catch (_) {}
       } else {
@@ -435,11 +439,12 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       initialValue: _selectedOrgType,
+                      isExpanded: true,
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: const Color(0xFFF8FAF9),
                         prefixIcon: const Icon(Icons.category_outlined, size: 20, color: AppColors.primary),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: const BorderSide(color: AppColors.iosBorder),
@@ -458,7 +463,8 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                           value: type['value'],
                           child: Text(
                             type['label']!,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         );
                       }).toList(),
@@ -523,20 +529,20 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                     onTap: () => setState(() => _selectedPlanId = id),
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       decoration: BoxDecoration(
                         color: isSelected ? const Color(0xFFF2FBF7) : AppColors.iosCardBg,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isSelected ? AppColors.primary : AppColors.iosBorder,
-                          width: isSelected ? 2.0 : 1.0,
+                          width: isSelected ? 1.8 : 1.0,
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: isSelected
                                 ? AppColors.primary.withValues(alpha: 0.08)
                                 : Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 10,
+                            blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
                         ],
@@ -546,35 +552,38 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                           Icon(
                             isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
                             color: isSelected ? AppColors.primary : AppColors.slate400,
-                            size: 22,
+                            size: 20,
                           ),
-                          const SizedBox(width: 14),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      plan['name'] ?? 'Plan',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.textPrimary,
+                                    Flexible(
+                                      child: Text(
+                                        plan['name'] ?? 'Plan',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     if (tag != null && tag.isNotEmpty) ...[
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 6),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                         decoration: BoxDecoration(
                                           color: AppColors.appleGreenBg,
-                                          borderRadius: BorderRadius.circular(6),
+                                          borderRadius: BorderRadius.circular(5),
                                         ),
                                         child: Text(
                                           tag,
                                           style: const TextStyle(
-                                            fontSize: 10,
+                                            fontSize: 9.5,
                                             fontWeight: FontWeight.w800,
                                             color: AppColors.appleGreen,
                                           ),
@@ -583,25 +592,30 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                                     ],
                                   ],
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 2),
                                 Text(
                                   plan['description'] ?? '',
                                   style: const TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     color: AppColors.textSecondary,
                                   ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 4),
                                 Row(
                                   children: [
-                                    const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: AppColors.primary),
+                                    const Icon(Icons.chat_bubble_outline_rounded, size: 12, color: AppColors.primary),
                                     const SizedBox(width: 4),
-                                    Text(
-                                      '$credits WhatsApp Credits included',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.primaryDark,
+                                    Expanded(
+                                      child: Text(
+                                        '$credits WhatsApp Credits included',
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.primaryDark,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
@@ -609,13 +623,15 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                               ],
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 price == 0 ? 'FREE' : '₹${price.toInt()}',
                                 style: TextStyle(
-                                  fontSize: 17,
+                                  fontSize: 15,
                                   fontWeight: FontWeight.w900,
                                   color: price == 0 ? AppColors.appleGreen : AppColors.textPrimary,
                                 ),
@@ -625,7 +641,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                                   plan['durationMonths'] != null && (plan['durationMonths'] as num) > 0
                                       ? '/ ${plan['durationMonths'] == 1 ? 'month' : '${plan['durationMonths']} months'}'
                                       : '/ period',
-                                  style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                                  style: const TextStyle(fontSize: 9.5, color: AppColors.textSecondary),
                                 ),
                             ],
                           ),

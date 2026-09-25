@@ -23,13 +23,21 @@ import whatsappTemplateRoutes from './routes/whatsappTemplateRoutes';
 import settingRoutes from './routes/settingRoutes';
 import creditPackageRoutes from './routes/creditPackageRoutes';
 import queueRoutes from './routes/queueRoutes';
+import whatsappWebhookRoutes from './routes/whatsappWebhookRoutes';
 
 import { reminderWorker, registerDailyReminderCron } from './queues/reminderQueue';
 import { billingWorker, registerMonthlyBillingCron } from './queues/billingQueue';
 import { webhookWorker } from './queues/webhookQueue';
+import { paymentExpiryWorker } from './queues/paymentExpiryQueue';
+
+import { renderHostedPaymentGateway } from './controllers/paymentController';
 
 app.use(cors());
 app.use(express.json());
+
+// Public Hosted Payment Gateway for WhatsApp Payment Links
+app.get('/pay/:id', renderHostedPaymentGateway);
+app.get('/pay', renderHostedPaymentGateway);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
@@ -44,6 +52,19 @@ app.use('/api/credit-packages', creditPackageRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/settings/whatsapp-templates', whatsappTemplateRoutes);
 app.use('/api/queues', queueRoutes);
+app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
+app.use('/webhook', whatsappWebhookRoutes);
+
+// Root Status
+app.get('/', (req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ONLINE',
+    app: 'TrackMyRent API',
+    domain: 'https://trackmyrent.anandhu-kannan.in',
+    docs: 'https://trackmyrent.anandhu-kannan.in/health',
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // Health Check Endpoint
 app.get('/health', async (req: Request, res: Response) => {
@@ -80,6 +101,7 @@ const shutdown = async (signal: string) => {
       reminderWorker.close(),
       billingWorker.close(),
       webhookWorker.close(),
+      paymentExpiryWorker.close(),
     ]);
     console.log('✅ BullMQ workers closed.');
     server.close(() => {

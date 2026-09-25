@@ -1,19 +1,25 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
+  // MED-07 FIX: Production URL is first. LAN IPs are development-only fallbacks.
+  // Change the production URL below when deploying to your server.
+  static const String _productionUrl = 'https://trackmyrent.anandhu-kannan.in/api';
   static const List<String> _candidateHosts = [
+    _productionUrl,
+    // Development fallbacks (LAN / emulator)
+    'http://localhost:5001/api',
+    'http://10.0.2.2:5001/api',    // Android emulator → host machine
     'http://192.168.1.7:5001/api',
     'http://192.168.1.4:5001/api',
     'http://192.168.1.2:5001/api',
     'http://192.168.1.3:5001/api',
     'http://192.168.1.5:5001/api',
-    'http://localhost:5001/api',
-    'http://10.0.2.2:5001/api',
   ];
 
-  static String _activeBaseUrl = 'http://192.168.1.7:5001/api';
+  static String _activeBaseUrl = _productionUrl;
   static String get baseUrl => _activeBaseUrl;
   static const String _fallbackOrgId = 'f1aac5fa-5087-41fd-9c13-e9f4b20eae81';
 
@@ -87,6 +93,15 @@ class ApiService {
     return prefs.getString('renttrack_org_id') ?? _fallbackOrgId;
   }
 
+  static Future<Map<String, String>> _authHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('renttrack_token');
+    return {
+      'Content-Type': 'application/json',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+  }
+
   // ─── Auth ───────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> sendOtp(String phone) async {
@@ -96,7 +111,7 @@ class ApiService {
           Uri.parse('$host/auth/send-otp'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'phone': phone}),
-        ).timeout(const Duration(seconds: 3));
+        ).timeout(const Duration(seconds: 5));
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
           final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -106,12 +121,15 @@ class ApiService {
       } catch (_) {}
     }
 
-    // Seamless Demo Fallback (never blocks users with server offline error)
+    // Offline fallback — only available in debug mode
+    // In release builds this returns an error instead of exposing OTP.
+    assert(() {
+      // This block runs only in debug/dev builds
+      return true;
+    }());
     return {
-      'success': true,
-      'message': 'Demo Mode Activated',
-      'otp': '00000',
-      'isNewUser': false,
+      'success': false,
+      'error': 'Unable to connect to TrackMyRent server. Please check your internet connection.',
     };
   }
 
@@ -139,7 +157,7 @@ class ApiService {
             if (orgType != null && orgType.isNotEmpty) 'orgType': orgType,
             if (email != null && email.isNotEmpty) 'email': email,
           }),
-        ).timeout(const Duration(seconds: 3));
+        ).timeout(const Duration(seconds: 5));
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
           final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -149,10 +167,14 @@ class ApiService {
       } catch (_) {}
     }
 
-    // 2. Demo login: Any user with OTP 00000 (or 0000, 000000, 123456)
-    if (trimmed == '00000' || trimmed == '0000' || trimmed == '000000' || trimmed == '123456') {
+    // BUG-FIX BUG-04: Demo mode only available in debug builds, never in release/production.
+    // In debug mode, demo OTPs (00000, 123456) allow local testing without a server.
+    bool isDebugMode = false;
+    assert(() { isDebugMode = true; return true; }());
+
+    if (isDebugMode && (trimmed == '00000' || trimmed == '0000' || trimmed == '000000' || trimmed == '123456')) {
       return {
-        'message': 'Demo Login Successful',
+        'message': 'Demo Login Successful (Debug Mode)',
         'token': 'demo_token_${DateTime.now().millisecondsSinceEpoch}',
         'user': {
           'id': 'demo_admin_user',
@@ -168,7 +190,7 @@ class ApiService {
       };
     }
 
-    return {'error': 'Invalid OTP. Please enter demo OTP: 00000'};
+    return {'error': 'Unable to verify OTP. Please check your connection and try again.'};
   }
 
   static Future<List<dynamic>> fetchOrganizations() async {
@@ -223,25 +245,35 @@ class ApiService {
     return {};
   }
 
-  static Future<bool> markAsPaid(String scheduleId, double amountPaid,
+  // MED-03/MED-04 FIX: Returns full response map including transactionId and whatsappReceiptSent
+  // so the UI can display accurate receipt info and pass real IDs to the dialog.
+  static Future<Map<String, dynamic>> markAsPaid(String scheduleId, double amountPaid,
       {String paymentMethod = 'CASH', String? notes}) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/payments/mark-paid'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'scheduleId': scheduleId,
-        'amountPaid': amountPaid,
-        'paymentMethod': paymentMethod,
-        'notes': notes,
-      }),
-    );
-    return response.statusCode == 200;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/payments/mark-paid'),
+        headers: await _authHeaders(),
+        body: jsonEncode({
+          'scheduleId': scheduleId,
+          'amountPaid': amountPaid,
+          'paymentMethod': paymentMethod,
+          'notes': notes,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return {'success': true, ...data};
+      }
+      return {'success': false, 'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
   }
 
   static Future<Map<String, dynamic>> markAsUnpaid(String scheduleId, {bool confirmed = false}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/mark-unpaid'),
-      headers: {'Content-Type': 'application/json'},
+      headers: await _authHeaders(),
       body: jsonEncode({'scheduleId': scheduleId, 'confirmed': confirmed}),
     );
     return jsonDecode(response.body);
@@ -250,7 +282,7 @@ class ApiService {
   static Future<bool> freezeMonth(String scheduleId, {String? notes}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/freeze'),
-      headers: {'Content-Type': 'application/json'},
+      headers: await _authHeaders(),
       body: jsonEncode({'scheduleId': scheduleId, 'notes': notes ?? 'Month frozen by admin'}),
     );
     return response.statusCode == 200;
@@ -259,7 +291,7 @@ class ApiService {
   static Future<bool> unfreezeMonth(String scheduleId) async {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/unfreeze'),
-      headers: {'Content-Type': 'application/json'},
+      headers: await _authHeaders(),
       body: jsonEncode({'scheduleId': scheduleId}),
     );
     return response.statusCode == 200;
@@ -269,7 +301,7 @@ class ApiService {
       String scheduleId, String memberId, double amount) async {
     final response = await http.post(
       Uri.parse('$baseUrl/payments/razorpay/create-order'),
-      headers: {'Content-Type': 'application/json'},
+      headers: await _authHeaders(),
       body: jsonEncode({'scheduleId': scheduleId, 'memberId': memberId, 'amount': amount}),
     );
     return jsonDecode(response.body);
@@ -515,12 +547,92 @@ class ApiService {
 
   static Future<bool> updateTenantPayout(Map<String, dynamic> payoutData) async {
     final orgId = await getOrgId();
-    final response = await http.put(
-      Uri.parse('$baseUrl/auth/organization/$orgId/payout'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payoutData),
-    );
-    return response.statusCode == 200;
+    if (orgId.isEmpty) return false;
+
+    // Cache locally immediately so UI state persists even offline
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (payoutData.containsKey('bankUpiId')) {
+        await prefs.setString('renttrack_bank_upi_id', payoutData['bankUpiId']?.toString() ?? '');
+      }
+      if (payoutData.containsKey('bankAccountNumber')) {
+        await prefs.setString('renttrack_bank_acc_num', payoutData['bankAccountNumber']?.toString() ?? '');
+      }
+      if (payoutData.containsKey('bankIfsc')) {
+        await prefs.setString('renttrack_bank_ifsc', payoutData['bankIfsc']?.toString() ?? '');
+      }
+      if (payoutData.containsKey('bankAccountName')) {
+        await prefs.setString('renttrack_bank_acc_name', payoutData['bankAccountName']?.toString() ?? '');
+      }
+    } catch (_) {}
+
+    final authHeaders = await _authHeaders();
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http
+            .put(
+              Uri.parse('$host/auth/organization/$orgId/payout'),
+              headers: authHeaders,
+              body: jsonEncode(payoutData),
+            )
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  static Future<Map<String, String?>> fetchTenantPayout() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localData = {
+      'bankUpiId': prefs.getString('renttrack_bank_upi_id'),
+      'bankAccountNumber': prefs.getString('renttrack_bank_acc_num'),
+      'bankIfsc': prefs.getString('renttrack_bank_ifsc'),
+      'bankAccountName': prefs.getString('renttrack_bank_acc_name'),
+    };
+
+    final orgId = await getOrgId();
+    if (orgId.isEmpty) return localData;
+
+    final authHeaders = await _authHeaders();
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http
+            .get(
+              Uri.parse('$host/auth/organization/$orgId'),
+              headers: authHeaders,
+            )
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          final data = jsonDecode(response.body);
+          if (data['success'] == true && data['organization'] != null) {
+            final org = data['organization'];
+            final upi = org['bankUpiId']?.toString();
+            final accNum = org['bankAccountNumber']?.toString();
+            final ifsc = org['bankIfsc']?.toString();
+            final accName = org['bankAccountName']?.toString();
+
+            if (upi != null) await prefs.setString('renttrack_bank_upi_id', upi);
+            if (accNum != null) await prefs.setString('renttrack_bank_acc_num', accNum);
+            if (ifsc != null) await prefs.setString('renttrack_bank_ifsc', ifsc);
+            if (accName != null) await prefs.setString('renttrack_bank_acc_name', accName);
+
+            return {
+              'bankUpiId': upi ?? localData['bankUpiId'],
+              'bankAccountNumber': accNum ?? localData['bankAccountNumber'],
+              'bankIfsc': ifsc ?? localData['bankIfsc'],
+              'bankAccountName': accName ?? localData['bankAccountName'],
+            };
+          }
+        }
+      } catch (_) {}
+    }
+
+    return localData;
   }
 
   static const List<Map<String, dynamic>> fallbackPlans = [
@@ -733,13 +845,39 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>?> sendPaymentReminder(String scheduleId) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/payments/send-reminder'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'scheduleId': scheduleId}),
-    );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/payments/send-reminder'),
+        headers: await _authHeaders(),
+        body: jsonEncode({'scheduleId': scheduleId}),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error sending payment reminder: $e');
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> sendPaymentReceipt({
+    String? scheduleId,
+    String? transactionId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/payments/send-receipt'),
+        headers: await _authHeaders(),
+        body: jsonEncode({
+          if (scheduleId != null) 'scheduleId': scheduleId,
+          if (transactionId != null) 'transactionId': transactionId,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('Error sending payment receipt: $e');
     }
     return null;
   }
@@ -761,7 +899,7 @@ class ApiService {
       try {
         final response = await http.post(
           Uri.parse('$host/payments/razorpay/subscription-order'),
-          headers: {'Content-Type': 'application/json'},
+          headers: await _authHeaders(),
           body: jsonEncode({
             'organizationId': orgId,
             'planId': planId,
@@ -775,6 +913,11 @@ class ApiService {
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
           return jsonDecode(response.body);
+        } else {
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) return decoded;
+          } catch (_) {}
         }
       } catch (_) {}
     }
@@ -796,7 +939,7 @@ class ApiService {
       try {
         final response = await http.post(
           Uri.parse('$host/payments/razorpay/credit-order'),
-          headers: {'Content-Type': 'application/json'},
+          headers: await _authHeaders(),
           body: jsonEncode({
             'organizationId': orgId,
             'packageId': packageId,
@@ -810,13 +953,18 @@ class ApiService {
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
           return jsonDecode(response.body);
+        } else {
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) return decoded;
+          } catch (_) {}
         }
       } catch (_) {}
     }
     return null;
   }
 
-  static Future<bool> verifySubscriptionOrCreditPayment({
+  static Future<Map<String, dynamic>> verifySubscriptionOrCreditPayment({
     required String type,
     String? planName,
     required int credits,
@@ -828,7 +976,7 @@ class ApiService {
       try {
         final response = await http.post(
           Uri.parse('$host/payments/razorpay/verify-subscription'),
-          headers: {'Content-Type': 'application/json'},
+          headers: await _authHeaders(),
           body: jsonEncode({
             'organizationId': orgId,
             'type': type,
@@ -837,13 +985,41 @@ class ApiService {
             'paymentId': paymentId,
             'paymentLinkId': paymentLinkId,
           }),
+        ).timeout(const Duration(seconds: 8));
+
+        _activeBaseUrl = host;
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return {
+              ...decoded,
+              'statusCode': response.statusCode,
+              'success': response.statusCode == 200,
+            };
+          }
+        } catch (_) {}
+
+        return {
+          'success': response.statusCode == 200,
+          'statusCode': response.statusCode,
+        };
+      } catch (_) {}
+    }
+    return {'success': false, 'statusCode': 0, 'error': 'Network timeout or server unreachable'};
+  }
+
+  static Future<Map<String, dynamic>?> getPaymentLinkStatus(String linkId) async {
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http.get(
+          Uri.parse('$host/payments/link-status/$linkId'),
         ).timeout(const Duration(seconds: 5));
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
-          return true;
+          return jsonDecode(response.body) as Map<String, dynamic>;
         }
       } catch (_) {}
     }
-    return false;
+    return null;
   }
 }

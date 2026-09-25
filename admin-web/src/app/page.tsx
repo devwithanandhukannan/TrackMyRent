@@ -38,10 +38,11 @@ import {
   Coins,
   Tag,
   Receipt,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from "lucide-react";
 
-const API_BASE_URL = "http://localhost:5001/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://trackmyrent.anandhu-kannan.in/api";
 
 interface Member {
   id: string;
@@ -190,6 +191,13 @@ export default function AdminDashboard() {
   const [savingAppPlan, setSavingAppPlan] = useState<boolean>(false);
   const [savingCreditPackage, setSavingCreditPackage] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // Testing states for Razorpay and WhatsApp
+  const [testingRazorpay, setTestingRazorpay] = useState<boolean>(false);
+  const [razorpayTestResult, setRazorpayTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
+  const [testingWhatsApp, setTestingWhatsApp] = useState<boolean>(false);
+  const [whatsAppTestPhone, setWhatsAppTestPhone] = useState<string>("");
+  const [whatsAppTestResult, setWhatsAppTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
 
   // Search & Filters for End Users Tab
   const [userSearch, setUserSearch] = useState<string>("");
@@ -499,6 +507,57 @@ export default function AdminDashboard() {
       showToast("Error updating settings", "error");
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  // Test Razorpay Live Connection
+  const handleTestRazorpay = async () => {
+    setTestingRazorpay(true);
+    setRazorpayTestResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/settings/test-razorpay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRazorpayTestResult({ success: true, message: data.message, details: data.details });
+        showToast("Razorpay credentials are valid and live!", "success");
+      } else {
+        setRazorpayTestResult({ success: false, message: data.error || "Razorpay test failed" });
+        showToast(data.error || "Razorpay test failed", "error");
+      }
+    } catch (err: any) {
+      setRazorpayTestResult({ success: false, message: err.message || "Failed to reach backend API" });
+      showToast("Error connecting to server", "error");
+    } finally {
+      setTestingRazorpay(false);
+    }
+  };
+
+  // Test Meta WhatsApp Live Connection
+  const handleTestWhatsApp = async () => {
+    setTestingWhatsApp(true);
+    setWhatsAppTestResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/settings/test-whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: whatsAppTestPhone || undefined }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setWhatsAppTestResult({ success: true, message: data.message, details: data.details });
+        showToast("Meta WhatsApp Cloud API is connected and verified!", "success");
+      } else {
+        setWhatsAppTestResult({ success: false, message: data.error || "WhatsApp test failed" });
+        showToast(data.error || "WhatsApp test failed", "error");
+      }
+    } catch (err: any) {
+      setWhatsAppTestResult({ success: false, message: err.message || "Failed to reach backend API" });
+      showToast("Error connecting to server", "error");
+    } finally {
+      setTestingWhatsApp(false);
     }
   };
 
@@ -2237,9 +2296,20 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Live Active
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestRazorpay}
+                      disabled={testingRazorpay}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-xl text-xs transition border border-blue-200 shadow-2xs"
+                    >
+                      {testingRazorpay ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-blue-600" />}
+                      <span>{testingRazorpay ? "Testing API..." : "Test Razorpay"}</span>
+                    </button>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Live Active
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -2282,6 +2352,38 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 </div>
+
+                {/* Razorpay Test Result Banner */}
+                {razorpayTestResult && (
+                  <div
+                    className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs ${
+                      razorpayTestResult.success
+                        ? "bg-emerald-50/80 border-emerald-200 text-emerald-800"
+                        : "bg-rose-50/80 border-rose-200 text-rose-800"
+                    }`}
+                  >
+                    {razorpayTestResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-semibold">{razorpayTestResult.message}</p>
+                      {razorpayTestResult.details && (
+                        <p className="mt-1 font-mono text-[11px] opacity-85">
+                          Status: {razorpayTestResult.details.status} | Key: {razorpayTestResult.details.keyId}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRazorpayTestResult(null)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Card 2: Meta WhatsApp Cloud API Settings */}
@@ -2301,9 +2403,20 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Meta Graph v20.0
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestWhatsApp}
+                      disabled={testingWhatsApp}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-xl text-xs transition border border-emerald-200 shadow-2xs"
+                    >
+                      {testingWhatsApp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-emerald-600" />}
+                      <span>{testingWhatsApp ? "Testing API..." : "Test WhatsApp"}</span>
+                    </button>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Meta Graph v20.0
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -2371,7 +2484,96 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-2">
+                {/* Optional Test Phone Message Dispatch */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="text-xs">
+                      <span className="font-bold text-slate-800">Send Live Test WhatsApp OTP</span>
+                      <p className="text-slate-500 text-[11px]">
+                        Optionally enter a 10-digit phone number to send a live test message now:
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={whatsAppTestPhone}
+                        onChange={(e) => setWhatsAppTestPhone(e.target.value)}
+                        placeholder="e.g. 9876543210"
+                        className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono w-36 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleTestWhatsApp}
+                        disabled={testingWhatsApp}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition shrink-0 flex items-center gap-1 shadow-2xs"
+                      >
+                        {testingWhatsApp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                        <span>Send Test</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* WhatsApp Test Result Banner */}
+                {whatsAppTestResult && (
+                  <div
+                    className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs ${
+                      whatsAppTestResult.success
+                        ? "bg-emerald-50/80 border-emerald-200 text-emerald-800"
+                        : "bg-rose-50/80 border-rose-200 text-rose-800"
+                    }`}
+                  >
+                    {whatsAppTestResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-semibold">{whatsAppTestResult.message}</p>
+                      {whatsAppTestResult.details && (
+                        <div className="mt-1 font-mono text-[11px] opacity-90 space-y-0.5">
+                          <p>
+                            Number: {whatsAppTestResult.details.displayPhoneNumber || "N/A"} ({whatsAppTestResult.details.verifiedName || "WhatsApp Business"})
+                          </p>
+                          <p>
+                            ID: {whatsAppTestResult.details.phoneNumberId} | Status: {whatsAppTestResult.details.verificationStatus || "LIVE"}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWhatsAppTestResult(null)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestRazorpay}
+                      disabled={testingRazorpay}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition border border-slate-200"
+                    >
+                      {testingRazorpay ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CreditCard className="w-3.5 h-3.5 text-blue-600" />}
+                      <span>Test Razorpay</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTestWhatsApp}
+                      disabled={testingWhatsApp}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-xl text-xs transition border border-emerald-200"
+                    >
+                      {testingWhatsApp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 text-emerald-600" />}
+                      <span>Test WhatsApp</span>
+                    </button>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={savingSettings}
