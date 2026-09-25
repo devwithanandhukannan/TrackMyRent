@@ -894,9 +894,22 @@ export const renderHostedPaymentGateway = async (req: Request, res: Response) =>
     });
 
     if (!record) {
+      // Check if id is a Member renewal link (/pay/renew/:memberId or just memberId)
+      let targetScheduleId = id;
+      if (id.startsWith('renew/')) {
+        const memberId = id.replace('renew/', '');
+        const activeSchedule = await prisma.paymentSchedule.findFirst({
+          where: { memberId, status: 'UNPAID' },
+          orderBy: { dueDate: 'asc' },
+        });
+        if (activeSchedule) {
+          targetScheduleId = activeSchedule.id;
+        }
+      }
+
       // Check if id corresponds directly to a Member's PaymentSchedule
       const schedule = await prisma.paymentSchedule.findUnique({
-        where: { id },
+        where: { id: targetScheduleId },
         include: {
           member: {
             include: {
@@ -1090,6 +1103,17 @@ export const renderHostedPaymentGateway = async (req: Request, res: Response) =>
                   <img src="${qrUrl}" width="220" height="220" alt="UPI QR Code" />
                   <div style="font-size:11px; color:#111B21; font-weight:700; margin-top:6px;">Scan with GPay / PhonePe / Paytm</div>
                 </div>
+
+                <!-- Step 2: UTR Reference Submission for instant verification -->
+                <div style="background: #182229; border: 1px solid #2A3942; border-radius: 14px; padding: 16px; margin-top: 14px; text-align: left;">
+                  <div style="font-size: 13px; font-weight: 700; color: #00A884; margin-bottom: 4px;">✓ Paid via UPI? Confirm here</div>
+                  <div style="font-size: 11px; color: #8696A0; margin-bottom: 12px;">Enter the 12-digit UTR / UPI Ref ID from your payment receipt for instant confirmation.</div>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" id="utrInput" placeholder="e.g. 412345678901" maxlength="20" style="flex: 1; background: #111B21; border: 1px solid #2A3942; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #E9EDEF; outline: none;" />
+                    <button onclick="submitUtr('${schedule.id}')" id="utrBtn" style="background: #00A884; color: #111B21; border: none; border-radius: 8px; padding: 10px 14px; font-weight: 700; font-size: 12px; cursor: pointer;">Submit</button>
+                  </div>
+                  <div id="utrMsg" style="font-size: 11px; margin-top: 8px; display: none;"></div>
+                </div>
               ` : `
                 <div style="background:#202C33; padding:16px; border-radius:12px; text-align:center; font-size:13px; color:#E9EDEF; margin-bottom:16px;">
                   Please contact <strong>${org.name}</strong> to obtain direct settlement details.
@@ -1097,7 +1121,7 @@ export const renderHostedPaymentGateway = async (req: Request, res: Response) =>
               `}
 
               ${org.bankAccountNumber ? `
-                <div class="bank-details">
+                <div class="bank-details" style="margin-top: 14px;">
                   <div style="font-weight:700; color:#00A884; margin-bottom:6px; font-size:12px;">Settlement Bank Details (IMPS / NEFT)</div>
                   <div class="bank-row"><span>Account Name:</span><strong>${org.bankAccountName || org.name}</strong></div>
                   <div class="bank-row"><span>Account No:</span><strong>${org.bankAccountNumber}</strong></div>
@@ -1126,6 +1150,45 @@ export const renderHostedPaymentGateway = async (req: Request, res: Response) =>
                 } else {
                   qr.style.display = 'block';
                   btn.innerText = '✕ Hide QR Code';
+                }
+              }
+              async function submitUtr(scheduleId) {
+                const utr = document.getElementById('utrInput').value.trim();
+                const msg = document.getElementById('utrMsg');
+                const btn = document.getElementById('utrBtn');
+                if (!utr || utr.length < 6) {
+                  msg.style.display = 'block';
+                  msg.style.color = '#EF4444';
+                  msg.innerText = 'Please enter a valid UTR / Transaction Reference number.';
+                  return;
+                }
+                btn.disabled = true;
+                btn.innerText = 'Saving...';
+                try {
+                  const res = await fetch('/api/payments/submit-utr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scheduleId, utrNumber: utr })
+                  });
+                  const data = await res.json();
+                  msg.style.display = 'block';
+                  if (data.success) {
+                    msg.style.color = '#00A884';
+                    msg.innerText = '✓ Reference received! Landlord will verify and receipt will be issued.';
+                    document.getElementById('utrInput').disabled = true;
+                    btn.style.display = 'none';
+                  } else {
+                    msg.style.color = '#EF4444';
+                    msg.innerText = data.error || 'Failed to submit reference. Please try again.';
+                    btn.disabled = false;
+                    btn.innerText = 'Submit';
+                  }
+                } catch(e) {
+                  msg.style.display = 'block';
+                  msg.style.color = '#EF4444';
+                  msg.innerText = 'Network error. Please try again later.';
+                  btn.disabled = false;
+                  btn.innerText = 'Submit';
                 }
               }
             </script>
@@ -1530,6 +1593,52 @@ export const sendPaymentReceipt = async (req: Request, res: Response) => {
         : waResult.error || 'Failed to send WhatsApp receipt via Cloud API',
       messageId: waResult.messageId,
       receiptUrl,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Public Endpoint: Customer submits UTR / UPI Reference ID after paying direct to landlord UPI
+ */
+export const submitUtrReference = async (req: Request, res: Response) => {
+  try {
+    const { scheduleId, utrNumber } = req.body;
+
+    if (!scheduleId || !utrNumber) {
+      return res.status(400).json({ success: false, error: 'scheduleId and utrNumber are required' });
+    }
+
+    const cleanedUtr = String(utrNumber).trim();
+    if (cleanedUtr.length < 6) {
+      return res.status(400).json({ success: false, error: 'Invalid UTR reference number length' });
+    }
+
+    const schedule = await prisma.paymentSchedule.findUnique({
+      where: { id: scheduleId },
+      include: { member: true },
+    });
+
+    if (!schedule) {
+      return res.status(404).json({ success: false, error: 'Payment schedule not found' });
+    }
+
+    // Attach UTR reference note to payment schedule notes
+    const currentNotes = schedule.notes ? `${schedule.notes} | ` : '';
+    const updatedNotes = `${currentNotes}UTR Ref: ${cleanedUtr} (Pending Owner Verification)`;
+
+    await prisma.paymentSchedule.update({
+      where: { id: scheduleId },
+      data: {
+        notes: updatedNotes,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'UTR reference submitted successfully. Landlord has been notified.',
+      utr: cleanedUtr,
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });

@@ -496,6 +496,17 @@ export const updateTenantPayout = async (req: Request, res: Response) => {
       tenantRazorpayKeySecret,
     } = req.body;
 
+    // Validate UPI ID format if provided
+    if (bankUpiId !== undefined && bankUpiId !== null && bankUpiId.trim() !== '') {
+      const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+      if (!upiRegex.test(bankUpiId.trim())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid UPI ID format. It should look like username@bank (e.g. 9876543210@paytm or name@okhdfcbank).',
+        });
+      }
+    }
+
     const org = await prisma.organization.update({
       where: { id },
       data: {

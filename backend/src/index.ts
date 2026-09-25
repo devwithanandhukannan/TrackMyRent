@@ -36,6 +36,10 @@ app.use(cors());
 app.use(express.json());
 
 // Public Hosted Payment Gateway for WhatsApp Payment Links
+app.get('/pay/renew/:id', (req, res, next) => {
+  req.params.id = `renew/${req.params.id}`;
+  return renderHostedPaymentGateway(req, res);
+});
 app.get('/pay/:id', renderHostedPaymentGateway);
 app.get('/pay', renderHostedPaymentGateway);
 

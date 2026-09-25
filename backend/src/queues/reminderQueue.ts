@@ -253,15 +253,9 @@ export const reminderWorker = new Worker(
         return { status: 'SKIPPED', reason: 'No valid credits or subscription expired' };
       }
 
-      // Build renewal payment link
-      let renewalLink = '';
-      if (org.bankUpiId) {
-        const payeeName = encodeURIComponent(org.bankAccountName || org.name);
-        const note = encodeURIComponent(`Renewal ${member.plan.name} - ${member.fullName}`);
-        renewalLink = `upi://pay?pa=${encodeURIComponent(org.bankUpiId)}&pn=${payeeName}&am=${member.plan.price}&cu=INR&tn=${note}`;
-      } else {
-        renewalLink = `https://trackmyrent.app/pay/renew/${member.id}`;
-      }
+      // Build renewal payment link using hosted payment gateway (clickable in WhatsApp)
+      const backendBase = process.env.BACKEND_PUBLIC_URL || 'https://trackmyrent.anandhu-kannan.in';
+      const renewalLink = `${backendBase}/pay/renew/${member.id}`;
 
       const waResult = await sendWhatsAppRenewalReminder({
         phone: String(member.phone),
