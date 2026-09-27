@@ -104,18 +104,23 @@ class ApiService {
 
   // ─── Auth ───────────────────────────────────────────────────────────────────
 
-  static Future<Map<String, dynamic>> sendOtp(String phone) async {
+  static Future<Map<String, dynamic>> sendOtp(String phone, {String? mode}) async {
     for (final host in [_activeBaseUrl, ..._candidateHosts]) {
       try {
         final response = await http.post(
           Uri.parse('$host/auth/send-otp'),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'phone': phone}),
+          body: jsonEncode({
+            'phone': phone,
+            if (mode != null) 'mode': mode,
+          }),
         ).timeout(const Duration(seconds: 5));
         if (response.statusCode == 200) {
           _activeBaseUrl = host;
           final data = jsonDecode(response.body) as Map<String, dynamic>;
-          data['success'] = true;
+          if (data['alreadyRegistered'] != true) {
+            data['success'] = true;
+          }
           return data;
         }
       } catch (_) {}

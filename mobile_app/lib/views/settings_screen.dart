@@ -145,7 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Profile updated successfully!'),
+            content: const Text('Profile updated'),
             backgroundColor: AppColors.primary,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -153,7 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to update profile'), backgroundColor: AppColors.appleRed),
+          const SnackBar(content: Text('Could not update profile'), backgroundColor: AppColors.appleRed),
         );
       }
     }
@@ -256,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                     if (success) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Custom field added successfully!'),
+                          content: Text('Custom field added'),
                           backgroundColor: AppColors.primary,
                         ),
                       );
@@ -264,7 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Failed to add custom field. Please retry.'),
+                          content: Text('Could not add custom field'),
                           backgroundColor: AppColors.appleRed,
                         ),
                       );
@@ -323,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Payout & UPI details saved! Direct customer payments enabled.'),
+            content: const Text('Payout details saved'),
             backgroundColor: AppColors.primary,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -331,7 +331,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to save payout details'), backgroundColor: AppColors.appleRed),
+          const SnackBar(content: Text('Could not save payout details'), backgroundColor: AppColors.appleRed),
         );
       }
     }
@@ -354,8 +354,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
         await _loadSettingsData();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Free Trial Activated! $credits credits added.'),
+          const SnackBar(
+            content: Text('Free Trial activated'),
             backgroundColor: AppColors.primary,
           ),
         );
@@ -510,14 +510,14 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('✅ Payment already processed and active!'),
+                        content: Text('Subscription active'),
                         backgroundColor: AppColors.emerald,
                       ),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(res['error'] ?? 'Could not verify payment yet. Please ensure payment is completed.'),
+                      const SnackBar(
+                        content: Text('Payment pending verification'),
                         backgroundColor: AppColors.appleRed,
                       ),
                     );
@@ -531,9 +531,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
       );
     } else {
       if (mounted) {
-        final errMsg = orderRes?['error'] ?? 'Unable to initiate Razorpay checkout. Please check connection.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errMsg), backgroundColor: AppColors.appleRed),
+          const SnackBar(content: Text('Unable to initiate checkout. Please retry.'), backgroundColor: AppColors.appleRed),
         );
       }
     }
@@ -687,14 +686,14 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('✅ Credits already added for this transaction!'),
+                        content: Text('Credits added'),
                         backgroundColor: AppColors.emerald,
                       ),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(res['error'] ?? 'Could not verify payment yet. Please ensure payment is completed.'),
+                      const SnackBar(
+                        content: Text('Payment pending verification'),
                         backgroundColor: AppColors.appleRed,
                       ),
                     );
@@ -713,7 +712,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
         await _loadSettingsData();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$count credits added!'), backgroundColor: AppColors.primary),
+          SnackBar(content: Text('$count credits added'), backgroundColor: AppColors.primary),
         );
       }
     }
@@ -1138,7 +1137,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     final upi = _upiController.text.trim();
     if (upi.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a UPI ID first to test settlement.')),
+        const SnackBar(content: Text('Please enter a UPI ID')),
       );
       return;
     }
@@ -1151,8 +1150,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('UPI Scheme ready: upi://pay?pa=$upi&pn=$org\nSupported on Android/iOS UPI apps.'),
+          const SnackBar(
+            content: Text('No UPI application found on device'),
             backgroundColor: AppColors.primary,
           ),
         );

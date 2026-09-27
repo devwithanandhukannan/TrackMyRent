@@ -219,7 +219,7 @@ export const customerLogin = async (req: Request, res: Response) => {
  */
 export const sendOtp = async (req: Request, res: Response) => {
   try {
-    const { phone } = req.body;
+    const { phone, mode } = req.body;
     if (!phone) {
       return res.status(400).json({ error: 'Phone number is required' });
     }
@@ -236,6 +236,17 @@ export const sendOtp = async (req: Request, res: Response) => {
     const hasValidDetails = existingUser &&
       existingUser.name && existingUser.name.trim() !== '' &&
       existingUser.organization && existingUser.organization.name && existingUser.organization.name.trim() !== '';
+
+    // If user is trying to register but phone is already registered, notify client immediately
+    if (mode === 'REGISTER' && existingUser && hasValidDetails) {
+      return res.status(200).json({
+        success: false,
+        alreadyRegistered: true,
+        isNewUser: false,
+        message: 'This number is already registered',
+        phone: cleanedPhone,
+      });
+    }
 
     // Generate secure 6-digit random OTP
     const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();

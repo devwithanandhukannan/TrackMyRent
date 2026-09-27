@@ -4,8 +4,14 @@ import '../services/api_service.dart';
 class AddMemberScreen extends StatefulWidget {
   final String? initialPlanId;
   final String? initialGroupId;
+  final Map<String, dynamic>? existingMember;
 
-  const AddMemberScreen({super.key, this.initialPlanId, this.initialGroupId});
+  const AddMemberScreen({
+    super.key,
+    this.initialPlanId,
+    this.initialGroupId,
+    this.existingMember,
+  });
 
   @override
   State<AddMemberScreen> createState() => _AddMemberScreenState();
@@ -36,8 +42,28 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedPlanId = widget.initialPlanId;
-    _selectedGroupId = widget.initialGroupId;
+    if (widget.existingMember != null) {
+      final em = widget.existingMember!;
+      _nameController.text = em['fullName'] ?? '';
+      _phoneController.text = em['phone'] ?? '';
+      _selectedPlanId = em['planId'] ?? widget.initialPlanId;
+      _selectedGroupId = em['groupId'] ?? widget.initialGroupId;
+      if (em['monthlyRent'] != null) {
+        _monthlyRentController.text = '${(em['monthlyRent'] as num).toInt()}';
+      }
+      if (em['dueDayNumber'] != null) {
+        _dueDayController.text = '${em['dueDayNumber']}';
+      }
+      if (em['customFieldsData'] is Map) {
+        final cfd = em['customFieldsData'] as Map;
+        if (cfd['Email'] != null) {
+          _emailController.text = cfd['Email'].toString();
+        }
+      }
+    } else {
+      _selectedPlanId = widget.initialPlanId;
+      _selectedGroupId = widget.initialGroupId;
+    }
     _loadPlansAndFields();
   }
 
@@ -66,24 +92,30 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
           for (var f in fetchedFields) {
             final fName = f['fieldName']?.toString() ?? '';
             if (fName.isNotEmpty && !_customControllers.containsKey(fName)) {
-              _customControllers[fName] = TextEditingController();
+              String initVal = '';
+              if (widget.existingMember != null && widget.existingMember!['customFieldsData'] is Map) {
+                initVal = (widget.existingMember!['customFieldsData'] as Map)[fName]?.toString() ?? '';
+              }
+              _customControllers[fName] = TextEditingController(text: initVal);
             }
           }
 
-          if (widget.initialPlanId != null) {
-            _selectedPlanId = widget.initialPlanId;
-            final match = fetchedPlans.firstWhere(
-              (p) => p['id']?.toString() == widget.initialPlanId,
-              orElse: () => null,
-            );
-            if (match != null) {
-              _monthlyRentController.text = '${match['price']?.toInt() ?? 0}';
-              _depositController.text = '${(match['price']?.toInt() ?? 0) * 2}';
+          if (widget.existingMember == null) {
+            if (widget.initialPlanId != null) {
+              _selectedPlanId = widget.initialPlanId;
+              final match = fetchedPlans.firstWhere(
+                (p) => p['id']?.toString() == widget.initialPlanId,
+                orElse: () => null,
+              );
+              if (match != null) {
+                _monthlyRentController.text = '${match['price']?.toInt() ?? 0}';
+                _depositController.text = '${(match['price']?.toInt() ?? 0) * 2}';
+              }
+            } else if (fetchedPlans.isNotEmpty && _selectedPlanId == null) {
+              _selectedPlanId = fetchedPlans.first['id'];
+              _monthlyRentController.text = '${fetchedPlans.first['price']?.toInt() ?? 0}';
+              _depositController.text = '${(fetchedPlans.first['price']?.toInt() ?? 0) * 2}';
             }
-          } else if (fetchedPlans.isNotEmpty && _selectedPlanId == null) {
-            _selectedPlanId = fetchedPlans.first['id'];
-            _monthlyRentController.text = '${fetchedPlans.first['price']?.toInt() ?? 0}';
-            _depositController.text = '${(fetchedPlans.first['price']?.toInt() ?? 0) * 2}';
           }
         });
       }
@@ -119,7 +151,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
     if (_selectedPlanId == null || _selectedPlanId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Plan is mandatory: Please select a plan for this resident.'),
+          content: Text('Please select a plan for this resident'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -151,36 +183,52 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
       final monthlyRent = double.tryParse(_monthlyRentController.text.trim());
       final dueDay = int.tryParse(_dueDayController.text.trim());
 
-      final success = await ApiService.createMember({
-        'fullName': name,
-        'phone': phone,
-        'planId': _selectedPlanId,
-        'groupId': _selectedGroupId,
-        'duration': '30 Days',
-        if (monthlyRent != null) 'monthlyRent': monthlyRent,
-        if (dueDay != null) 'dueDayNumber': dueDay,
-        if (customData.isNotEmpty) 'customFieldsData': customData,
-      });
+      final isEdit = widget.existingMember != null;
+      bool success = false;
+
+      if (isEdit) {
+        final memberId = widget.existingMember!['id'].toString();
+        success = await ApiService.updateMember(memberId, {
+          'fullName': name,
+          'phone': phone,
+          'planId': _selectedPlanId,
+          'groupId': _selectedGroupId,
+          if (monthlyRent != null) 'monthlyRent': monthlyRent,
+          if (dueDay != null) 'dueDayNumber': dueDay,
+          if (customData.isNotEmpty) 'customFieldsData': customData,
+        });
+      } else {
+        success = await ApiService.createMember({
+          'fullName': name,
+          'phone': phone,
+          'planId': _selectedPlanId,
+          'groupId': _selectedGroupId,
+          'duration': '30 Days',
+          if (monthlyRent != null) 'monthlyRent': monthlyRent,
+          if (dueDay != null) 'dueDayNumber': dueDay,
+          if (customData.isNotEmpty) 'customFieldsData': customData,
+        });
+      }
 
       if (mounted) {
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Resident registered successfully!'),
+            SnackBar(
+              content: Text(isEdit ? 'Profile updated' : 'Resident added'),
               backgroundColor: primaryGreen,
             ),
           );
           Navigator.pop(context, true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to add resident. Please check backend connection.')),
+            SnackBar(content: Text(isEdit ? 'Could not update resident' : 'Could not add resident')),
           );
         }
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          const SnackBar(content: Text('Something went wrong. Please retry.')),
         );
       }
     } finally {
@@ -207,9 +255,9 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: textPrimary, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Resident Registration',
-          style: TextStyle(
+        title: Text(
+          widget.existingMember != null ? 'Edit Resident Details' : 'Resident Registration',
+          style: const TextStyle(
             color: textPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,

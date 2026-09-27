@@ -81,11 +81,38 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final res = await ApiService.sendOtp(phone);
+      final res = await ApiService.sendOtp(phone, mode: _tabMode == 0 ? 'REGISTER' : 'LOGIN');
+
+      // If user is trying to register but phone is already registered, move to Sign In
+      if (_tabMode == 0 && (res['alreadyRegistered'] == true || (res['isNewUser'] == false && res['existingUser'] != null))) {
+        setState(() {
+          _tabMode = 1; // Move to Existing Sign In page
+          _phoneController.text = phone; // Auto-type phone number
+          _otpSent = false;
+          _isLoading = false;
+          _errorMessage = '';
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'This number is already registered. Please sign in.',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+              backgroundColor: const Color(0xFF0F172A),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
       if (res['error'] != null) {
         setState(() {
           _isLoading = false;
-          _errorMessage = res['error'] ?? 'Failed to send OTP. Please try again.';
+          _errorMessage = res['error'] ?? 'Could not send verification code.';
         });
       } else {
         setState(() {

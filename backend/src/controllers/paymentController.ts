@@ -967,203 +967,585 @@ export const renderHostedPaymentGateway = async (req: Request, res: Response) =>
           ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(directUpiUrl)}`
           : '';
 
+        // Format masked account number for privacy/security (e.g. •••• 1073)
+        const maskedAccountNo = org.bankAccountNumber && org.bankAccountNumber.length > 4
+          ? `•••• •••• ${org.bankAccountNumber.slice(-4)}`
+          : (org.bankAccountNumber || '');
+
         return res.status(200).send(`
           <!DOCTYPE html>
-          <html>
+          <html lang="en">
           <head>
             <meta charset="utf-8">
-            <title>Pay ${org.name} - ₹${formattedAmount}</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+            <title>Pay ${org.name} • ₹${formattedAmount}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
             <style>
-              * { box-sizing: border-box; }
+              :root {
+                --bg: #090B0E;
+                --surface: rgba(18, 22, 28, 0.75);
+                --surface-hover: rgba(26, 32, 40, 0.85);
+                --border: rgba(255, 255, 255, 0.08);
+                --text-primary: #FFFFFF;
+                --text-secondary: #94A3B8;
+                --text-muted: #64748B;
+                --accent: #10B981;
+                --accent-hover: #059669;
+                --accent-glow: rgba(16, 185, 129, 0.25);
+              }
+              * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
               body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                background: #0B141A;
-                color: #E9EDEF;
+                font-family: -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+                background-color: var(--bg);
+                background-image: 
+                  radial-gradient(at 50% 0%, rgba(16, 185, 129, 0.12) 0px, transparent 50%),
+                  radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.06) 0px, transparent 40%);
+                color: var(--text-primary);
                 margin: 0;
-                padding: 16px;
+                padding: 24px 16px;
                 display: flex;
+                flex-direction: column;
                 justify-content: center;
                 align-items: center;
                 min-height: 100vh;
+                letter-spacing: -0.01em;
               }
-              .container {
-                background: #111B21;
-                border: 1px solid #222E35;
-                border-radius: 24px;
-                max-width: 440px;
+              .wrapper {
+                max-width: 410px;
                 width: 100%;
-                padding: 24px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+                margin: 0 auto;
               }
-              .header { text-align: center; margin-bottom: 20px; }
-              .org-name { font-size: 18px; font-weight: 700; color: #E9EDEF; margin: 0 0 4px; }
-              .sub-title { font-size: 12px; color: #8696A0; margin: 0; }
-              .amount-card {
-                background: linear-gradient(135deg, rgba(0, 168, 132, 0.15) 0%, rgba(32, 44, 51, 0.6) 100%);
-                border: 1px solid rgba(0, 168, 132, 0.3);
-                border-radius: 18px;
-                padding: 20px;
+              .card {
+                background: var(--surface);
+                backdrop-filter: blur(24px);
+                -webkit-backdrop-filter: blur(24px);
+                border: 1px solid var(--border);
+                border-radius: 28px;
+                padding: 32px 24px 28px;
+                box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+              }
+              .brand-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 24px;
+              }
+              .brand-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                border-radius: 20px;
+                background: rgba(16, 185, 129, 0.1);
+                border: 1px solid rgba(16, 185, 129, 0.2);
+                color: var(--accent);
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+              }
+              .brand-badge .pulse {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--accent);
+                box-shadow: 0 0 8px var(--accent);
+              }
+              .org-name {
+                font-size: 14px;
+                font-weight: 600;
+                color: var(--text-secondary);
+                margin: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 220px;
+              }
+              
+              /* Amount Showcase */
+              .amount-container {
                 text-align: center;
-                margin-bottom: 20px;
+                padding: 8px 0 24px;
               }
-              .amount-label { font-size: 12px; font-weight: 600; color: #00A884; text-transform: uppercase; letter-spacing: 0.5px; }
-              .amount-val { font-size: 38px; font-weight: 800; color: #FFFFFF; margin: 4px 0; }
-              .member-info { font-size: 13px; color: #8696A0; }
-              .btn-pay {
+              .amount-tag {
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                color: var(--text-muted);
+                margin-bottom: 6px;
+              }
+              .amount-display {
+                font-size: 44px;
+                font-weight: 800;
+                color: #FFFFFF;
+                line-height: 1;
+                letter-spacing: -0.03em;
+                margin-bottom: 10px;
+              }
+              .amount-display span {
+                font-size: 32px;
+                font-weight: 600;
+                color: var(--text-secondary);
+                margin-right: 2px;
+              }
+              .member-subtitle {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid var(--border);
+                border-radius: 20px;
+                padding: 5px 12px;
+                font-size: 12px;
+                color: var(--text-secondary);
+              }
+              .member-subtitle strong {
+                color: #FFFFFF;
+              }
+              
+              /* Primary Action Button */
+              .action-primary {
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 10px;
                 width: 100%;
-                background: #00A884;
-                color: #111B21;
-                text-decoration: none;
+                background: linear-gradient(180deg, #10B981 0%, #059669 100%);
+                color: #041E15;
                 font-size: 16px;
-                font-weight: 800;
-                padding: 16px;
-                border-radius: 14px;
-                box-shadow: 0 4px 20px rgba(0, 168, 132, 0.4);
-                transition: transform 0.15s ease, background 0.15s ease;
+                font-weight: 700;
+                text-decoration: none;
+                padding: 16px 20px;
+                border-radius: 18px;
+                box-shadow: 0 10px 25px -4px var(--accent-glow);
+                transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+                border: none;
+                cursor: pointer;
+                margin-bottom: 12px;
+              }
+              .action-primary:active {
+                transform: scale(0.98);
+                opacity: 0.95;
+              }
+              .action-primary svg {
+                width: 18px;
+                height: 18px;
+                fill: currentColor;
+              }
+
+              /* Secondary Card Row (UPI copy) */
+              .upi-row {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                padding: 10px 14px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 16px;
+                transition: background 0.15s ease;
+              }
+              .upi-info {
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+              }
+              .upi-title {
+                font-size: 10px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: var(--text-muted);
+              }
+              .upi-vpa {
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--text-primary);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+              }
+              .btn-chip {
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #FFFFFF;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 6px 12px;
+                border-radius: 10px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                flex-shrink: 0;
+              }
+              .btn-chip:hover {
+                background: rgba(255, 255, 255, 0.1);
+              }
+              .btn-chip:active {
+                transform: scale(0.96);
+              }
+
+              /* Collapsible Section Toggles */
+              .toggle-row {
+                display: flex;
+                gap: 8px;
                 margin-bottom: 16px;
               }
-              .btn-pay:active { transform: scale(0.98); background: #029474; }
-              .upi-box {
-                background: #202C33;
-                border-radius: 14px;
-                padding: 14px;
+              .btn-toggle {
+                flex: 1;
+                background: transparent;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 9px 12px;
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--text-secondary);
+                cursor: pointer;
+                transition: all 0.15s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+              }
+              .btn-toggle:hover {
+                background: rgba(255, 255, 255, 0.03);
+                color: var(--text-primary);
+              }
+              .btn-toggle.active {
+                background: rgba(16, 185, 129, 0.08);
+                border-color: rgba(16, 185, 129, 0.3);
+                color: var(--accent);
+              }
+
+              /* QR Container Modal/Drawer */
+              .drawer {
+                display: none;
+                animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
                 margin-bottom: 16px;
+              }
+              @keyframes slideDown {
+                from { opacity: 0; transform: translateY(-8px); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              .qr-card {
+                background: #FFFFFF;
+                border-radius: 20px;
+                padding: 20px;
+                text-align: center;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+                max-width: 250px;
+                margin: 0 auto;
+              }
+              .qr-card img {
+                display: block;
+                margin: 0 auto;
+                border-radius: 10px;
+              }
+              .qr-hint {
+                font-size: 11px;
+                color: #0F172A;
+                font-weight: 700;
+                margin-top: 10px;
+              }
+
+              /* Masked / Protected Bank Details Accordion */
+              .secure-bank-box {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                padding: 14px 16px;
+                font-size: 12px;
+              }
+              .secure-bank-title {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-              }
-              .upi-label { font-size: 11px; color: #8696A0; margin-bottom: 2px; }
-              .upi-val { font-size: 13px; font-weight: 700; color: #E9EDEF; word-break: break-all; }
-              .btn-copy {
-                background: #2A3942;
-                border: none;
-                color: #00A884;
+                color: var(--text-muted);
+                font-size: 11px;
                 font-weight: 700;
-                font-size: 12px;
-                padding: 6px 12px;
-                border-radius: 8px;
-                cursor: pointer;
-                white-space: nowrap;
-                margin-left: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                margin-bottom: 10px;
               }
-              .btn-copy:active { background: #374248; }
-              .qr-toggle-btn {
-                background: transparent;
-                border: 1px solid #2A3942;
-                color: #8696A0;
-                width: 100%;
-                padding: 10px;
-                border-radius: 10px;
+              .secure-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                color: var(--accent);
+                font-size: 10px;
+              }
+              .bank-detail-item {
+                display: flex;
+                justify-content: space-between;
+                padding: 4px 0;
                 font-size: 12px;
+                color: var(--text-secondary);
+              }
+              .bank-detail-item span {
+                color: var(--text-muted);
+              }
+              .bank-detail-item strong {
+                color: var(--text-primary);
                 font-weight: 600;
-                cursor: pointer;
-                margin-bottom: 14px;
+                font-family: -apple-system, monospace;
+                letter-spacing: 0.02em;
               }
-              .qr-box { display: none; text-align: center; margin-bottom: 16px; background: #FFFFFF; padding: 14px; border-radius: 16px; width: fit-content; margin-left: auto; margin-right: auto; }
-              .qr-box img { display: block; border-radius: 8px; }
-              .bank-details { background: #182229; border: 1px solid #222E35; border-radius: 14px; padding: 14px; font-size: 12px; color: #8696A0; }
-              .bank-row { display: flex; justify-content: space-between; padding: 4px 0; }
-              .bank-row strong { color: #E9EDEF; }
-              .footer { text-align: center; font-size: 11px; color: #667781; margin-top: 18px; }
+
+              /* UTR Confirmation Box - Minimalist Input */
+              .utr-box {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid var(--border);
+                border-radius: 18px;
+                padding: 16px;
+                margin-top: 16px;
+              }
+              .utr-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 10px;
+              }
+              .utr-title {
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--text-primary);
+              }
+              .utr-subtitle {
+                font-size: 11px;
+                color: var(--text-muted);
+                line-height: 1.4;
+                margin-bottom: 12px;
+              }
+              .utr-input-group {
+                display: flex;
+                gap: 8px;
+              }
+              .utr-field {
+                flex: 1;
+                background: rgba(0, 0, 0, 0.35);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 11px 14px;
+                font-size: 13px;
+                color: #FFFFFF;
+                font-family: -apple-system, monospace;
+                letter-spacing: 0.05em;
+                outline: none;
+                transition: border-color 0.15s ease;
+              }
+              .utr-field:focus {
+                border-color: var(--accent);
+              }
+              .btn-submit-utr {
+                background: #FFFFFF;
+                color: #090B0E;
+                border: none;
+                border-radius: 12px;
+                padding: 0 16px;
+                font-size: 13px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.15s ease;
+              }
+              .btn-submit-utr:hover {
+                background: #E2E8F0;
+              }
+              .btn-submit-utr:active {
+                transform: scale(0.96);
+              }
+              .utr-feedback {
+                font-size: 11px;
+                margin-top: 10px;
+                display: none;
+                padding: 8px 12px;
+                border-radius: 10px;
+              }
+
+              /* Footer */
+              .footer {
+                text-align: center;
+                font-size: 11px;
+                color: var(--text-muted);
+                margin-top: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+              }
+              .footer svg {
+                width: 12px;
+                height: 12px;
+                fill: var(--accent);
+              }
             </style>
           </head>
           <body>
-            <div class="container">
-              <div class="header">
-                <h1 class="org-name">${org.name}</h1>
-                <p class="sub-title">Automated Direct Fee & Rent Settlement</p>
+            <div class="wrapper">
+              <div class="card">
+                <!-- Brand Bar -->
+                <div class="brand-header">
+                  <div class="org-name">${org.name}</div>
+                  <div class="brand-badge">
+                    <span class="pulse"></span>
+                    Verified Direct P2P
+                  </div>
+                </div>
+
+                <!-- Due Amount Hero -->
+                <div class="amount-container">
+                  <div class="amount-tag">Payment Due</div>
+                  <div class="amount-display"><span>₹</span>${formattedAmount}</div>
+                  <div class="member-subtitle">
+                    Payer: <strong>${member.fullName}</strong> • Due: ${dueDateFormatted}
+                  </div>
+                </div>
+
+                ${upiId ? `
+                  <!-- Main Native UPI Pay Button -->
+                  <a href="${directUpiUrl}" class="action-primary" id="payBtn">
+                    <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    <span>Pay ₹${formattedAmount} via UPI</span>
+                  </a>
+
+                  <!-- Landlord UPI ID Chip with Copy -->
+                  <div class="upi-row">
+                    <div class="upi-info">
+                      <span class="upi-title">Landlord VPA</span>
+                      <span class="upi-vpa" id="upiText">${upiId}</span>
+                    </div>
+                    <button class="btn-chip" onclick="copyUpi()">Copy</button>
+                  </div>
+
+                  <!-- Segmented Controls for QR & Direct Details -->
+                  <div class="toggle-row">
+                    <button class="btn-toggle" onclick="toggleDrawer('qrContainer', this)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                      <span>Show QR Code</span>
+                    </button>
+                    ${org.bankAccountNumber ? `
+                      <button class="btn-toggle" onclick="toggleDrawer('bankContainer', this)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v4M12 14v4M16 14v4"/></svg>
+                        <span>Bank Details</span>
+                      </button>
+                    ` : ''}
+                  </div>
+
+                  <!-- Collapsible QR Code -->
+                  <div class="drawer" id="qrContainer">
+                    <div class="qr-card">
+                      <img src="${qrUrl}" width="200" height="200" alt="UPI QR" />
+                      <div class="qr-hint">Scan with GPay, PhonePe, Paytm, or BHIM</div>
+                    </div>
+                  </div>
+
+                  <!-- Collapsible Protected Bank Details -->
+                  ${org.bankAccountNumber ? `
+                    <div class="drawer" id="bankContainer">
+                      <div class="secure-bank-box">
+                        <div class="secure-bank-title">
+                          <span>Bank Account (IMPS / NEFT)</span>
+                          <span class="secure-badge">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                            Direct Settlement
+                          </span>
+                        </div>
+                        <div class="bank-detail-item">
+                          <span>Beneficiary</span>
+                          <strong>${org.bankAccountName || org.name}</strong>
+                        </div>
+                        <div class="bank-detail-item">
+                          <span>Account Number</span>
+                          <strong>${maskedAccountNo}</strong>
+                        </div>
+                        <div class="bank-detail-item">
+                          <span>IFSC Code</span>
+                          <strong>${org.bankIfsc || 'N/A'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ` : ''}
+
+                  <!-- UTR Confirmation Box -->
+                  <div class="utr-box">
+                    <div class="utr-header">
+                      <span class="utr-title">Confirm Transfer</span>
+                      <span style="font-size: 10px; color: var(--accent); font-weight:600;">Instant Status</span>
+                    </div>
+                    <div class="utr-subtitle">
+                      Paid already? Enter the 12-digit UTR / Reference ID from your UPI receipt to automatically confirm your rent schedule.
+                    </div>
+                    <div class="utr-input-group">
+                      <input type="text" id="utrInput" placeholder="12-digit UPI UTR" maxlength="22" class="utr-field" />
+                      <button onclick="submitUtr('${schedule.id}')" id="utrBtn" class="btn-submit-utr">Confirm</button>
+                    </div>
+                    <div id="utrMsg" class="utr-feedback"></div>
+                  </div>
+                ` : `
+                  <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 20px; border-radius: 16px; text-align: center; color: var(--text-secondary); font-size: 13px;">
+                    Please contact <strong>${org.name}</strong> to configure payout credentials.
+                  </div>
+                `}
               </div>
 
-              <div class="amount-card">
-                <div class="amount-label">Due Amount</div>
-                <div class="amount-val">₹${formattedAmount}</div>
-                <div class="member-info">Payer: <strong>${member.fullName}</strong> • Due: ${dueDateFormatted}</div>
-              </div>
-
-              ${upiId ? `
-                <a href="${directUpiUrl}" class="btn-pay" id="payBtn">
-                  <span>⚡ Pay ₹${formattedAmount} via UPI App</span>
-                </a>
-
-                <div class="upi-box">
-                  <div>
-                    <div class="upi-label">Landlord UPI ID (VPA)</div>
-                    <div class="upi-val" id="upiText">${upiId}</div>
-                  </div>
-                  <button class="btn-copy" onclick="copyUpi()">Copy</button>
-                </div>
-
-                <button class="qr-toggle-btn" onclick="toggleQr()" id="qrToggleBtn">📱 Show QR Code for Desktop / Scanner</button>
-                <div class="qr-box" id="qrContainer">
-                  <img src="${qrUrl}" width="220" height="220" alt="UPI QR Code" />
-                  <div style="font-size:11px; color:#111B21; font-weight:700; margin-top:6px;">Scan with GPay / PhonePe / Paytm</div>
-                </div>
-
-                <!-- Step 2: UTR Reference Submission for instant verification -->
-                <div style="background: #182229; border: 1px solid #2A3942; border-radius: 14px; padding: 16px; margin-top: 14px; text-align: left;">
-                  <div style="font-size: 13px; font-weight: 700; color: #00A884; margin-bottom: 4px;">✓ Paid via UPI? Confirm here</div>
-                  <div style="font-size: 11px; color: #8696A0; margin-bottom: 12px;">Enter the 12-digit UTR / UPI Ref ID from your payment receipt for instant confirmation.</div>
-                  <div style="display: flex; gap: 8px;">
-                    <input type="text" id="utrInput" placeholder="e.g. 412345678901" maxlength="20" style="flex: 1; background: #111B21; border: 1px solid #2A3942; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #E9EDEF; outline: none;" />
-                    <button onclick="submitUtr('${schedule.id}')" id="utrBtn" style="background: #00A884; color: #111B21; border: none; border-radius: 8px; padding: 10px 14px; font-weight: 700; font-size: 12px; cursor: pointer;">Submit</button>
-                  </div>
-                  <div id="utrMsg" style="font-size: 11px; margin-top: 8px; display: none;"></div>
-                </div>
-              ` : `
-                <div style="background:#202C33; padding:16px; border-radius:12px; text-align:center; font-size:13px; color:#E9EDEF; margin-bottom:16px;">
-                  Please contact <strong>${org.name}</strong> to obtain direct settlement details.
-                </div>
-              `}
-
-              ${org.bankAccountNumber ? `
-                <div class="bank-details" style="margin-top: 14px;">
-                  <div style="font-weight:700; color:#00A884; margin-bottom:6px; font-size:12px;">Settlement Bank Details (IMPS / NEFT)</div>
-                  <div class="bank-row"><span>Account Name:</span><strong>${org.bankAccountName || org.name}</strong></div>
-                  <div class="bank-row"><span>Account No:</span><strong>${org.bankAccountNumber}</strong></div>
-                  <div class="bank-row"><span>IFSC Code:</span><strong>${org.bankIfsc || 'N/A'}</strong></div>
-                </div>
-              ` : ''}
-
+              <!-- Minimal Footer -->
               <div class="footer">
-                Powered by RentTrack Platform • 100% Direct P2P Settlement (0% Commission)
+                <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+                <span>Direct P2P Settlement • Powered by TrackMyRent</span>
               </div>
             </div>
 
             <script>
               function copyUpi() {
-                const text = document.getElementById('upiText').innerText;
+                const text = document.getElementById('upiText').innerText.trim();
                 navigator.clipboard.writeText(text).then(() => {
-                  alert('UPI ID copied to clipboard: ' + text);
+                  const btn = event.target;
+                  const original = btn.innerText;
+                  btn.innerText = 'Copied!';
+                  btn.style.color = '#10B981';
+                  setTimeout(() => {
+                    btn.innerText = original;
+                    btn.style.color = '';
+                  }, 2000);
                 });
               }
-              function toggleQr() {
-                const qr = document.getElementById('qrContainer');
-                const btn = document.getElementById('qrToggleBtn');
-                if (qr.style.display === 'block') {
-                  qr.style.display = 'none';
-                  btn.innerText = '📱 Show QR Code for Desktop / Scanner';
-                } else {
-                  qr.style.display = 'block';
-                  btn.innerText = '✕ Hide QR Code';
+
+              function toggleDrawer(id, btn) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const isShown = el.style.display === 'block';
+                
+                // Hide other drawers first for clean view
+                ['qrContainer', 'bankContainer'].forEach(dId => {
+                  const d = document.getElementById(dId);
+                  if (d) d.style.display = 'none';
+                });
+                document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
+
+                if (!isShown) {
+                  el.style.display = 'block';
+                  btn.classList.add('active');
                 }
               }
+
               async function submitUtr(scheduleId) {
-                const utr = document.getElementById('utrInput').value.trim();
+                const input = document.getElementById('utrInput');
+                const utr = input.value.trim();
                 const msg = document.getElementById('utrMsg');
                 const btn = document.getElementById('utrBtn');
+                
                 if (!utr || utr.length < 6) {
                   msg.style.display = 'block';
-                  msg.style.color = '#EF4444';
-                  msg.innerText = 'Please enter a valid UTR / Transaction Reference number.';
+                  msg.style.background = 'rgba(239, 68, 68, 0.1)';
+                  msg.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+                  msg.style.color = '#F87171';
+                  msg.innerText = 'Please enter a valid 12-digit UTR reference.';
                   return;
                 }
+
                 btn.disabled = true;
-                btn.innerText = 'Saving...';
+                btn.innerText = 'Verifying...';
+
                 try {
                   const res = await fetch('/api/payments/submit-utr', {
                     method: 'POST',
@@ -1173,22 +1555,27 @@ export const renderHostedPaymentGateway = async (req: Request, res: Response) =>
                   const data = await res.json();
                   msg.style.display = 'block';
                   if (data.success) {
-                    msg.style.color = '#00A884';
-                    msg.innerText = '✓ Reference received! Landlord will verify and receipt will be issued.';
-                    document.getElementById('utrInput').disabled = true;
+                    msg.style.background = 'rgba(16, 185, 129, 0.1)';
+                    msg.style.border = '1px solid rgba(16, 185, 129, 0.2)';
+                    msg.style.color = '#34D399';
+                    msg.innerText = '✓ Reference recorded. Landlord will verify and issue receipt.';
+                    input.disabled = true;
                     btn.style.display = 'none';
                   } else {
-                    msg.style.color = '#EF4444';
-                    msg.innerText = data.error || 'Failed to submit reference. Please try again.';
+                    msg.style.background = 'rgba(239, 68, 68, 0.1)';
+                    msg.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+                    msg.style.color = '#F87171';
+                    msg.innerText = data.error || 'Failed to submit. Please try again.';
                     btn.disabled = false;
-                    btn.innerText = 'Submit';
+                    btn.innerText = 'Confirm';
                   }
                 } catch(e) {
                   msg.style.display = 'block';
-                  msg.style.color = '#EF4444';
-                  msg.innerText = 'Network error. Please try again later.';
+                  msg.style.background = 'rgba(239, 68, 68, 0.1)';
+                  msg.style.color = '#F87171';
+                  msg.innerText = 'Network error. Please try again.';
                   btn.disabled = false;
-                  btn.innerText = 'Submit';
+                  btn.innerText = 'Confirm';
                 }
               }
             </script>

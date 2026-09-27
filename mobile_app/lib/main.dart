@@ -1465,12 +1465,12 @@ class _PlansScreenViewState extends State<PlansScreenView> {
                 if (mounted) {
                   if (success) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Plan created successfully!'), backgroundColor: Color(0xFF059669)),
+                      const SnackBar(content: Text('Plan created'), backgroundColor: Color(0xFF059669)),
                     );
                     _loadPlans();
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Failed to create plan. Please check backend connection.'), backgroundColor: Colors.redAccent),
+                      const SnackBar(content: Text('Could not create plan'), backgroundColor: Colors.redAccent),
                     );
                   }
                 }
@@ -2372,7 +2372,7 @@ class _ExpensesScreenViewState extends State<ExpensesScreenView> {
                 if (mounted) {
                   if (success) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Expense added successfully!'), backgroundColor: Color(0xFF059669)),
+                      const SnackBar(content: Text('Expense added'), backgroundColor: Color(0xFF059669)),
                     );
                     _loadExpenses();
                   }
