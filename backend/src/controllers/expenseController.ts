@@ -61,3 +61,49 @@ export const createCustomExpenseCategory = async (req: Request, res: Response) =
     res.status(500).json({ error: (error as Error).message });
   }
 };
+
+export const deleteExpense = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Expense record not found' });
+    }
+
+    await prisma.expense.delete({
+      where: { id },
+    });
+
+    res.status(200).json({ message: 'Expense deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+};
+
+export const updateExpense = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { categoryId, title, amount, expenseDate, notes } = req.body;
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Expense record not found' });
+    }
+
+    const updated = await prisma.expense.update({
+      where: { id },
+      data: {
+        ...(categoryId ? { categoryId } : {}),
+        ...(title !== undefined ? { title } : {}),
+        ...(amount !== undefined ? { amount: parseFloat(amount) } : {}),
+        ...(expenseDate ? { expenseDate: new Date(expenseDate) } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+      },
+      include: { category: true },
+    });
+
+    res.status(200).json({ message: 'Expense updated successfully', expense: updated });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+};

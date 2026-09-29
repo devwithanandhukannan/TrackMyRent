@@ -485,8 +485,28 @@ class ApiService {
   }
 
   static Future<bool> deleteExpense(String id) async {
-    final response = await http.delete(Uri.parse('$baseUrl/expenses/$id'));
-    return response.statusCode == 200;
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/expenses/$id'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> updateExpense(String id, Map<String, dynamic> expenseData) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/expenses/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(expenseData),
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<List<dynamic>> fetchExpenseCategories() async {
