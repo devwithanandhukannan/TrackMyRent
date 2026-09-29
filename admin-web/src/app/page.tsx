@@ -1432,23 +1432,38 @@ export default function AdminDashboard() {
 
                               {/* Active Subscription Plan */}
                               <td className="py-4 px-5">
-                                {org.selectedAppPlan ? (
-                                  <div>
-                                    <span className="inline-flex items-center gap-1 font-semibold text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                                      <Zap className="w-3 h-3 text-blue-600" />
-                                      {org.selectedAppPlan.name}
-                                    </span>
-                                    <div className="text-[11px] text-slate-500 mt-1">
-                                      ₹{org.selectedAppPlan.price} / {org.selectedAppPlan.durationMonths}m
+                                {(() => {
+                                  const activePlan =
+                                    (credits?.subscriptionName
+                                      ? appPlans.find(
+                                          (p) =>
+                                            p.name.toLowerCase() ===
+                                            credits.subscriptionName.toLowerCase()
+                                        )
+                                      : null) ||
+                                    org.selectedAppPlan ||
+                                    (org.selectedAppPlanId
+                                      ? appPlans.find((p) => p.id === org.selectedAppPlanId)
+                                      : null);
+
+                                  return activePlan ? (
+                                    <div>
+                                      <span className="inline-flex items-center gap-1 font-semibold text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                        <Zap className="w-3 h-3 text-blue-600" />
+                                        {activePlan.name}
+                                      </span>
+                                      <div className="text-[11px] text-slate-500 mt-1">
+                                        ₹{activePlan.price} / {activePlan.durationMonths}m
+                                      </div>
                                     </div>
-                                  </div>
-                                ) : credits ? (
-                                  <span className="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
-                                    {credits.subscriptionName || "Plus Trial"}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-slate-400 italic">No Active Plan</span>
-                                )}
+                                  ) : credits ? (
+                                    <span className="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                                      {credits.subscriptionName || "Plus Trial"}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400 italic">No Active Plan</span>
+                                  );
+                                })()}
                               </td>
 
                               {/* WhatsApp Credits Balance */}
@@ -1471,7 +1486,14 @@ export default function AdminDashboard() {
                                 <button
                                   onClick={() => {
                                     setAssignPlanModalOrg(org);
-                                    setSelectedPlanToAssign(org.selectedAppPlanId || "");
+                                    const matchedPlan = credits?.subscriptionName
+                                      ? appPlans.find(
+                                          (p) =>
+                                            p.name.toLowerCase() ===
+                                            credits.subscriptionName.toLowerCase()
+                                        )
+                                      : null;
+                                    setSelectedPlanToAssign(matchedPlan?.id || org.selectedAppPlanId || "");
                                   }}
                                   className="px-3 py-1.5 text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg transition"
                                 >

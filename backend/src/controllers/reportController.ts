@@ -132,13 +132,14 @@ export const getTenantBillingReport = async (req: Request, res: Response) => {
     const tenants = orgs.map((org) => {
       const admin = org.users.find((u) => u.role === 'ORG_ADMIN') || org.users[0];
       const sub = org.subscriptionCredit;
-      const plan = org.selectedAppPlanId
-        ? planMap.get(org.selectedAppPlanId)
-        : allPlans.find((p) => p.name.toLowerCase() === (sub?.subscriptionName || '').toLowerCase());
+      const plan = (sub?.subscriptionName
+        ? allPlans.find((p) => p.name.toLowerCase() === sub.subscriptionName.toLowerCase())
+        : null)
+        || (org.selectedAppPlanId ? planMap.get(org.selectedAppPlanId) : null);
 
       const planName = sub?.subscriptionName || plan?.name || '2 Days Free Trial';
-      const planPrice = plan?.price || (planName.toLowerCase().includes('trial') ? 0 : 500);
-      const isFreeTrial = plan?.isFreeTrial ?? planName.toLowerCase().includes('trial');
+      const planPrice = plan?.price !== undefined ? plan.price : (planName.toLowerCase().includes('trial') ? 0 : 500);
+      const isFreeTrial = plan ? plan.isFreeTrial : planName.toLowerCase().includes('trial');
 
       let expiresAt = sub?.expiresAt ? new Date(sub.expiresAt) : new Date(now + 2 * 86400000);
       const diffMs = expiresAt.getTime() - now;
@@ -233,7 +234,20 @@ export const adminAdjustTenantSubscription = async (req: Request, res: Response)
     const updateData: any = {};
     if (Number(extendDays) > 0) updateData.expiresAt = newExpires;
     if (Number(addCredits) !== 0) updateData.purchasedCredits = { increment: Number(addCredits) };
-    if (planName) updateData.subscriptionName = planName;
+    if (planName) {
+      updateData.subscriptionName = planName;
+      try {
+        const matchingPlan = await prisma.appSubscriptionPlan.findFirst({
+          where: { name: { equals: planName, mode: 'insensitive' } },
+        });
+        if (matchingPlan) {
+          await prisma.organization.update({
+            where: { id: organizationId },
+            data: { selectedAppPlanId: matchingPlan.id },
+          });
+        }
+      } catch (_) {}
+    }
 
     const updated = await prisma.subscriptionCredit.upsert({
       where: { organizationId },

@@ -771,18 +771,40 @@ export const verifySubscriptionOrCreditPayment = async (req: Request, res: Respo
     const numCredits = Number(credits);
 
     if (type === 'SUBSCRIPTION') {
+      // Link organization to the matching AppSubscriptionPlan
+      let matchingAppPlan = null;
+      const targetPlanId = linkRecord?.planId || req.body.planId;
+      if (targetPlanId) {
+        matchingAppPlan = await prisma.appSubscriptionPlan.findUnique({
+          where: { id: targetPlanId },
+        }).catch(() => null);
+      }
+      const targetPlanName = planName || linkRecord?.planName;
+      if (!matchingAppPlan && targetPlanName) {
+        matchingAppPlan = await prisma.appSubscriptionPlan.findFirst({
+          where: { name: { equals: targetPlanName, mode: 'insensitive' } },
+        });
+      }
+
+      if (matchingAppPlan) {
+        await prisma.organization.update({
+          where: { id: organizationId },
+          data: { selectedAppPlanId: matchingAppPlan.id },
+        }).catch((err) => console.warn('[PaymentController] Error updating selectedAppPlanId:', err));
+      }
+
       const updated = await prisma.subscriptionCredit.upsert({
         where: { organizationId },
         update: {
           planType: 'CREDIT',
-          subscriptionName: planName || 'Pro Plan',
+          subscriptionName: planName || matchingAppPlan?.name || 'Pro Plan',
           purchasedCredits: { increment: numCredits },
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days active
         },
         create: {
           organizationId,
           planType: 'CREDIT',
-          subscriptionName: planName || 'Pro Plan',
+          subscriptionName: planName || matchingAppPlan?.name || 'Pro Plan',
           purchasedCredits: numCredits > 0 ? numCredits : 100,
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
@@ -790,7 +812,7 @@ export const verifySubscriptionOrCreditPayment = async (req: Request, res: Respo
 
       return res.status(200).json({
         success: true,
-        message: `Subscription to ${planName} activated successfully! ${numCredits} credits added.`,
+        message: `Subscription to ${planName || matchingAppPlan?.name} activated successfully! ${numCredits} credits added.`,
         data: updated,
       });
     } else {

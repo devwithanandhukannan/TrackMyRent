@@ -493,9 +493,27 @@ export const getAllOrganizations = async (req: Request, res: Response) => {
     const planMap = new Map(appPlans.map((p) => [p.id, p]));
 
     const enrichedOrgs = orgs.map((org) => {
-      const activePlan = org.selectedAppPlanId ? planMap.get(org.selectedAppPlanId) : null;
+      // Prioritize matching active subscription from subscriptionCredit
+      const subName = org.subscriptionCredit?.subscriptionName;
+      let activePlan = null;
+      if (subName) {
+        activePlan = appPlans.find((p) => p.name.toLowerCase() === subName.toLowerCase());
+      }
+      if (!activePlan && org.selectedAppPlanId) {
+        activePlan = planMap.get(org.selectedAppPlanId);
+      }
+
+      // If active plan was resolved and DB's selectedAppPlanId was out-of-sync, self-heal in background
+      if (activePlan && org.selectedAppPlanId !== activePlan.id) {
+        prisma.organization.update({
+          where: { id: org.id },
+          data: { selectedAppPlanId: activePlan.id },
+        }).catch(() => null);
+      }
+
       return {
         ...org,
+        selectedAppPlanId: activePlan ? activePlan.id : org.selectedAppPlanId,
         selectedAppPlan: activePlan || null,
       };
     });

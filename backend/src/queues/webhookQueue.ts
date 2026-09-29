@@ -55,6 +55,30 @@ export const webhookWorker = new Worker(
       // If it is a subscription or credit package purchase from notes
       if (notes?.type === 'SUBSCRIPTION' && notes?.organizationId) {
         const numCredits = Number(notes.credits) || 0;
+
+        // Link organization to matching AppSubscriptionPlan
+        try {
+          let resolvedPlan = null;
+          if (notes.planId) {
+            resolvedPlan = await prisma.appSubscriptionPlan.findUnique({
+              where: { id: notes.planId },
+            }).catch(() => null);
+          }
+          if (!resolvedPlan && notes.planName) {
+            resolvedPlan = await prisma.appSubscriptionPlan.findFirst({
+              where: { name: { equals: notes.planName, mode: 'insensitive' } },
+            });
+          }
+          if (resolvedPlan) {
+            await prisma.organization.update({
+              where: { id: notes.organizationId },
+              data: { selectedAppPlanId: resolvedPlan.id },
+            });
+          }
+        } catch (planErr) {
+          console.warn('[WebhookWorker] Could not link selectedAppPlanId:', planErr);
+        }
+
         await prisma.subscriptionCredit.upsert({
           where: { organizationId: notes.organizationId },
           update: {
