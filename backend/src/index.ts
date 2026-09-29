@@ -30,7 +30,7 @@ import { billingWorker, registerMonthlyBillingCron } from './queues/billingQueue
 import { webhookWorker } from './queues/webhookQueue';
 import { paymentExpiryWorker } from './queues/paymentExpiryQueue';
 
-import { renderHostedPaymentGateway } from './controllers/paymentController';
+import { renderHostedPaymentGateway, renderDigitalReceipt } from './controllers/paymentController';
 
 app.use(cors());
 app.use(express.json());
@@ -42,6 +42,9 @@ app.get('/pay/renew/:id', (req, res, next) => {
 });
 app.get('/pay/:id', renderHostedPaymentGateway);
 app.get('/pay', renderHostedPaymentGateway);
+
+// Public Official Digital Receipt for WhatsApp Receipt Links
+app.get('/receipt/:id', renderDigitalReceipt);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);

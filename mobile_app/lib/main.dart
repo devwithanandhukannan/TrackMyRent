@@ -58,7 +58,7 @@ class RentTrackApp extends StatelessWidget {
     }
 
     return MaterialApp(
-      title: 'RentTrack',
+      title: 'TrackMyRent',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.light().copyWith(
         scaffoldBackgroundColor: AppColors.iosBackground,

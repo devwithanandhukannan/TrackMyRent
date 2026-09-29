@@ -2032,3 +2032,438 @@ export const submitUtrReference = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Public Endpoint: Render Official Digital Receipt for Tenant (WhatsApp link target)
+ * GET /receipt/:id
+ */
+export const renderDigitalReceipt = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(404).send('Receipt not found');
+    }
+
+    // 1. Try finding by Transaction ID first
+    let transaction = await prisma.transaction.findUnique({
+      where: { id },
+      include: {
+        member: {
+          include: {
+            organization: true,
+            plan: true,
+            group: true,
+          },
+        },
+        paymentSchedule: true,
+      },
+    });
+
+    let schedule = transaction?.paymentSchedule || null;
+    let member = transaction?.member || null;
+
+    // 2. If not found by transaction id, search by paymentSchedule id
+    if (!transaction) {
+      const foundSchedule = await prisma.paymentSchedule.findUnique({
+        where: { id },
+        include: {
+          member: {
+            include: {
+              organization: true,
+              plan: true,
+              group: true,
+            },
+          },
+          transactions: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+      });
+
+      if (foundSchedule) {
+        schedule = foundSchedule;
+        member = foundSchedule.member;
+        transaction = (foundSchedule as any).transactions?.[0] || null;
+      }
+    }
+
+    if (!member) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Receipt Not Found - TrackMyRent</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0B141A; color: #E9EDEF; margin:0; padding:24px; display:flex; justify-content:center; align-items:center; min-height:100vh; }
+            .card { background: #111B21; border: 1px solid #222E35; border-radius: 20px; max-width: 400px; width: 100%; padding: 32px 24px; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h2 style="margin: 0 0 12px; color: #EF4444;">Receipt Not Found</h2>
+            <p style="color: #94A3B8; font-size: 14px; margin: 0;">We could not locate this digital receipt. Please contact your property manager.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    const org = member.organization;
+    const amount = Number(transaction?.amountPaid || schedule?.amount || 0);
+    const formattedAmount = amount.toLocaleString('en-IN');
+    const paymentMethod = transaction?.paymentMethod || 'CASH';
+    const paymentDateObj = transaction?.paymentDate || transaction?.createdAt || schedule?.updatedAt || new Date();
+    const formattedDate = new Date(paymentDateObj).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+    const formattedTime = new Date(paymentDateObj).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    const receiptNo = `REC-${id.slice(0, 8).toUpperCase()}`;
+    const period = schedule?.monthYear || 'Monthly Rent';
+    const planName = member.plan?.name || member.group?.name || 'Standard Membership';
+
+    res.status(200).send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Payment Receipt #${receiptNo} - ${org.name}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+        <style>
+          :root {
+            --primary: #056B48;
+            --primary-light: #10B981;
+            --primary-bg: #ECFDF5;
+            --dark: #0F172A;
+            --card-bg: #FFFFFF;
+            --body-bg: #F8FAFC;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+            --border: #E2E8F0;
+          }
+
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--body-bg);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 24px 16px;
+          }
+
+          .receipt-wrapper {
+            width: 100%;
+            max-width: 440px;
+          }
+
+          /* Main Ticket / Receipt Card */
+          .receipt-card {
+            background: var(--card-bg);
+            border-radius: 28px;
+            box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            position: relative;
+          }
+
+          /* Top Header Banner */
+          .receipt-top {
+            background: linear-gradient(135deg, #056B48 0%, #064E3B 100%);
+            padding: 28px 24px 24px;
+            text-align: center;
+            color: #FFFFFF;
+            position: relative;
+          }
+
+          .check-badge {
+            width: 56px;
+            height: 56px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 12px;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+          }
+          .check-badge svg {
+            width: 28px;
+            height: 28px;
+            fill: #FFFFFF;
+          }
+
+          .org-title {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.4px;
+            margin-bottom: 4px;
+          }
+          .receipt-subtitle {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.85);
+            font-weight: 500;
+          }
+
+          /* Hero Amount Section */
+          .amount-hero {
+            padding: 24px;
+            text-align: center;
+            background: #FFFFFF;
+            border-bottom: 1px dashed var(--border);
+            position: relative;
+          }
+
+          .amount-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-muted);
+            font-weight: 700;
+            margin-bottom: 4px;
+          }
+          .amount-val {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 38px;
+            font-weight: 800;
+            color: var(--primary);
+            letter-spacing: -1px;
+            line-height: 1.1;
+          }
+          .amount-val span {
+            font-size: 24px;
+            vertical-align: super;
+            margin-right: 2px;
+          }
+
+          .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--primary-bg);
+            color: var(--primary);
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-top: 10px;
+            border: 1px solid rgba(16, 185, 129, 0.25);
+          }
+          .status-tag::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: var(--primary-light);
+            border-radius: 50%;
+          }
+
+          /* Details Grid */
+          .details-list {
+            padding: 20px 24px;
+            background: #FFFFFF;
+          }
+
+          .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #F1F5F9;
+            font-size: 13px;
+          }
+          .detail-row:last-child {
+            border-bottom: none;
+          }
+          .detail-label {
+            color: var(--text-muted);
+            font-weight: 500;
+          }
+          .detail-val {
+            color: var(--text-main);
+            font-weight: 700;
+            text-align: right;
+          }
+
+          .pill-method {
+            background: #F1F5F9;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--dark);
+          }
+
+          /* Footer Stamp */
+          .receipt-footer {
+            background: #F8FAFC;
+            padding: 18px 24px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-muted);
+          }
+          .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 4px;
+          }
+
+          /* Action Buttons */
+          .actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+          }
+          .btn-action {
+            flex: 1;
+            padding: 14px 18px;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+          }
+          .btn-primary {
+            background: var(--primary);
+            color: #FFFFFF;
+            box-shadow: 0 4px 12px rgba(5, 107, 72, 0.25);
+          }
+          .btn-primary:hover {
+            background: #045237;
+          }
+          .btn-secondary {
+            background: #FFFFFF;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+          }
+          .btn-secondary:hover {
+            background: #F1F5F9;
+          }
+
+          /* Print Media Query */
+          @media print {
+            body { background: #FFFFFF; padding: 0; }
+            .receipt-card { box-shadow: none; border: 1px solid #CBD5E1; }
+            .actions { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt-wrapper">
+          <div class="receipt-card">
+            <!-- Top Verified Banner -->
+            <div class="receipt-top">
+              <div class="check-badge">
+                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+              </div>
+              <div class="org-title">${org.name}</div>
+              <div class="receipt-subtitle">Official Payment Receipt & Confirmation</div>
+            </div>
+
+            <!-- Hero Amount -->
+            <div class="amount-hero">
+              <div class="amount-label">Total Amount Paid</div>
+              <div class="amount-val"><span>₹</span>${formattedAmount}</div>
+              <div class="status-tag">PAID IN FULL</div>
+            </div>
+
+            <!-- Details List -->
+            <div class="details-list">
+              <div class="detail-row">
+                <span class="detail-label">Receipt Number</span>
+                <span class="detail-val" style="font-family: monospace; letter-spacing: 0.5px;">${receiptNo}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Paid By (Member)</span>
+                <span class="detail-val">${member.fullName}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Payment Date</span>
+                <span class="detail-val">${formattedDate}, ${formattedTime}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Billing Period</span>
+                <span class="detail-val">${period}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Plan / Batch</span>
+                <span class="detail-val">${planName}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Payment Method</span>
+                <span class="detail-val"><span class="pill-method">${paymentMethod}</span></span>
+              </div>
+              ${transaction?.notes ? `
+                <div class="detail-row">
+                  <span class="detail-label">Notes</span>
+                  <span class="detail-val" style="font-weight: 500; font-size: 12px; color: var(--text-muted);">${transaction.notes}</span>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Security Footer -->
+            <div class="receipt-footer">
+              <div class="security-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+                <span>Verified Direct Settlement</span>
+              </div>
+              <div>Digitally Generated & Verified • Powered by TrackMyRent</div>
+            </div>
+          </div>
+
+          <!-- Bottom Action Buttons -->
+          <div class="actions">
+            <button class="btn-action btn-primary" onclick="window.print()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
+              <span>Print / Save PDF</span>
+            </button>
+            <button class="btn-action btn-secondary" onclick="shareReceipt()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/></svg>
+              <span>Share</span>
+            </button>
+          </div>
+        </div>
+
+        <script>
+          function shareReceipt() {
+            if (navigator.share) {
+              navigator.share({
+                title: 'Payment Receipt - ${org.name}',
+                text: 'Official digital payment receipt of ₹${formattedAmount} for ${member.fullName}.',
+                url: window.location.href
+              }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(window.location.href).then(() => {
+                alert('Receipt link copied to clipboard!');
+              });
+            }
+          }
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error: any) {
+    return res.status(500).send('Error generating digital receipt: ' + error.message);
+  }
+};
+
+

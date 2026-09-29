@@ -27,12 +27,53 @@ class _LoginScreenState extends State<LoginScreen> {
   String _errorMessage = '';
   int _countdown = 45;
   Timer? _timer;
+  Timer? _phoneCheckDebounce;
 
   @override
   void initState() {
     super.initState();
-    _phoneController.addListener(() => setState(() {}));
+    _phoneController.addListener(_onPhoneChanged);
     _otpController.addListener(() => setState(() {}));
+  }
+
+  void _onPhoneChanged() {
+    setState(() {});
+    // Auto-detect existing user while in Register Property tab
+    if (_tabMode == 0 && !_otpSent) {
+      final phone = _phoneController.text.trim();
+      if (phone.length == 10) {
+        _phoneCheckDebounce?.cancel();
+        _phoneCheckDebounce = Timer(const Duration(milliseconds: 350), () {
+          _checkIfPhoneExists(phone);
+        });
+      }
+    }
+  }
+
+  Future<void> _checkIfPhoneExists(String phone) async {
+    if (!mounted || _tabMode != 0 || _otpSent) return;
+    try {
+      final res = await ApiService.checkPhone(phone);
+      if (!mounted || _tabMode != 0 || _otpSent) return;
+      if (res['exists'] == true) {
+        setState(() {
+          _tabMode = 1; // Auto switch to Existing Sign In
+          _errorMessage = '';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Mobile number already exists. Switched to Existing Sign In.',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            backgroundColor: const Color(0xFF0F172A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   @override
@@ -42,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _orgNameController.dispose();
     _otpController.dispose();
     _timer?.cancel();
+    _phoneCheckDebounce?.cancel();
     super.dispose();
   }
 
@@ -64,30 +106,62 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (_tabMode == 0) {
-      if (_ownerNameController.text.trim().isEmpty) {
-        setState(() => _errorMessage = 'Please enter your Full Name.');
-        return;
-      }
-      if (_orgNameController.text.trim().isEmpty) {
-        setState(() => _errorMessage = 'Please enter your Property / Facility Name.');
-        return;
-      }
-    }
-
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
 
     try {
+      if (_tabMode == 0) {
+        // First check if phone already exists before demanding Name & Facility
+        final checkRes = await ApiService.checkPhone(phone);
+        if (checkRes['exists'] == true) {
+          setState(() {
+            _tabMode = 1; // Move to Existing Sign In tab
+            _isLoading = false;
+            _errorMessage = '';
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Mobile number already exists. Switched to Existing Sign In.',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                backgroundColor: const Color(0xFF0F172A),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+
+        // For new user registration, validate required fields
+        if (_ownerNameController.text.trim().isEmpty) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Please enter your Full Name.';
+          });
+          return;
+        }
+        if (_orgNameController.text.trim().isEmpty) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Please enter your Property / Facility Name.';
+          });
+          return;
+        }
+      }
+
       final res = await ApiService.sendOtp(phone, mode: _tabMode == 0 ? 'REGISTER' : 'LOGIN');
 
       // If user is trying to register but phone is already registered, move to Sign In
       if (_tabMode == 0 && (res['alreadyRegistered'] == true || (res['isNewUser'] == false && res['existingUser'] != null))) {
         setState(() {
           _tabMode = 1; // Move to Existing Sign In page
-          _phoneController.text = phone; // Auto-type phone number
+          _phoneController.text = phone; // Retain phone number
           _otpSent = false;
           _isLoading = false;
           _errorMessage = '';
@@ -96,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text(
-                'This number is already registered. Please sign in.',
+                'Mobile number already exists. Switched to Existing Sign In.',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               ),
               backgroundColor: const Color(0xFF0F172A),
@@ -151,8 +225,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (res['token'] != null) {
-        final finalOrgName = res['organization']?['name'] ?? orgName;
-        final finalUserName = res['user']?['name'] ?? name;
+        final finalOrgName = (res['organization']?['name'] ?? orgName).toString().trim();
+        final finalUserName = (res['user']?['name'] ?? name).toString().trim();
 
         await ApiService.saveSession(
           token: res['token'],
@@ -163,22 +237,38 @@ class _LoginScreenState extends State<LoginScreen> {
           phone: res['user']?['phone'] ?? phone,
         );
 
-        final isCompleted = await ApiService.isProfileCompleted();
+        final bool isNew = res['isNewUser'] == true;
+        final bool isCompletedBackend = res['isProfileCompleted'] == true;
+        final bool hasValidNames = finalUserName.isNotEmpty &&
+            finalUserName != 'Property Owner' &&
+            finalOrgName.isNotEmpty &&
+            finalOrgName != 'My Facility';
+
+        final bool isFullyComplete = isCompletedBackend || (!isNew && hasValidNames);
 
         if (mounted) {
-          if (_tabMode == 0 || !isCompleted) {
+          if (isFullyComplete) {
+            // Existing user/tenant with completed profile:
+            // Do NOT show second page (Profile Completion). Go straight to MainNavigationScreen!
+            await ApiService.markProfileCompleted(
+              userName: finalUserName,
+              orgName: finalOrgName,
+              planId: res['organization']?['selectedAppPlanId'],
+            );
+            if (!mounted) return;
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
+            );
+          } else {
+            // New user or incomplete profile details: show Complete Your Profile (2nd screen)
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (ctx) => ProfileCompletionScreen(
                   phone: phone,
-                  initialName: finalUserName,
-                  initialOrgName: finalOrgName,
+                  initialName: finalUserName.isNotEmpty && finalUserName != 'Property Owner' ? finalUserName : null,
+                  initialOrgName: finalOrgName.isNotEmpty && finalOrgName != 'My Facility' ? finalOrgName : null,
                 ),
               ),
-            );
-          } else {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (ctx) => const MainNavigationScreen()),
             );
           }
         }
@@ -222,8 +312,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       Container(
-                        width: 68,
-                        height: 68,
+                        width: 72,
+                        height: 72,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(20),
@@ -235,8 +325,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.all(12),
-                        child: const Icon(Icons.apartment_rounded, size: 38, color: AppColors.primary),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.asset(
+                          'assets/images/app_logo.png',
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ],
                   ),
@@ -267,7 +360,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'RentTrack',
+                    'TrackMyRent',
                     style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w800,

@@ -215,6 +215,42 @@ export const customerLogin = async (req: Request, res: Response) => {
 };
 
 /**
+ * Quick check if a phone number is already registered
+ */
+export const checkPhoneExists = async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.params;
+    if (!phone) {
+      return res.status(400).json({ exists: false, error: 'Phone number is required' });
+    }
+    const cleanedPhone = String(phone).replace(/[^0-9]/g, '');
+    if (cleanedPhone.length < 10) {
+      return res.status(400).json({ exists: false, error: 'Please enter a valid 10-digit mobile number' });
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: { phone: { contains: cleanedPhone } },
+      include: { organization: true },
+    });
+
+    const isProfileCompleted = Boolean(
+      existingUser &&
+      existingUser.name && existingUser.name.trim() !== '' && existingUser.name.trim() !== 'Property Owner' &&
+      existingUser.organization && existingUser.organization.name && existingUser.organization.name.trim() !== '' && existingUser.organization.name.trim() !== 'My Facility'
+    );
+
+    return res.status(200).json({
+      exists: Boolean(existingUser),
+      isProfileCompleted,
+      name: existingUser?.name || '',
+      orgName: existingUser?.organization?.name || '',
+    });
+  } catch (error) {
+    return res.status(500).json({ exists: false, error: (error as Error).message });
+  }
+};
+
+/**
  * Send OTP for Facility Admin / Owner Phone Login
  */
 export const sendOtp = async (req: Request, res: Response) => {
@@ -233,17 +269,20 @@ export const sendOtp = async (req: Request, res: Response) => {
       include: { organization: true },
     });
 
-    const hasValidDetails = existingUser &&
-      existingUser.name && existingUser.name.trim() !== '' &&
-      existingUser.organization && existingUser.organization.name && existingUser.organization.name.trim() !== '';
+    const hasValidDetails = Boolean(
+      existingUser &&
+      existingUser.name && existingUser.name.trim() !== '' && existingUser.name.trim() !== 'Property Owner' &&
+      existingUser.organization && existingUser.organization.name && existingUser.organization.name.trim() !== '' && existingUser.organization.name.trim() !== 'My Facility'
+    );
 
     // If user is trying to register but phone is already registered, notify client immediately
-    if (mode === 'REGISTER' && existingUser && hasValidDetails) {
+    if (mode === 'REGISTER' && existingUser) {
       return res.status(200).json({
         success: false,
         alreadyRegistered: true,
         isNewUser: false,
-        message: 'This number is already registered',
+        isProfileCompleted: hasValidDetails,
+        message: 'This mobile number is already registered. Please sign in.',
         phone: cleanedPhone,
       });
     }
@@ -332,15 +371,12 @@ export const verifyOtp = async (req: Request, res: Response) => {
       include: { organization: true },
     });
 
-    if (!user) {
-      if (!adminName || !String(adminName).trim() || !orgName || !String(orgName).trim()) {
-        return res.status(400).json({
-          error: 'Basic details required: Name and Organisation Name must be provided before login.',
-        });
-      }
+    let isNewUser = false;
 
-      const finalOrgName = String(orgName).trim();
-      const finalAdminName = String(adminName).trim();
+    if (!user) {
+      isNewUser = true;
+      const finalOrgName = (orgName && String(orgName).trim()) ? String(orgName).trim() : 'My Facility';
+      const finalAdminName = (adminName && String(adminName).trim()) ? String(adminName).trim() : 'Property Owner';
       const generatedEmail = email && String(email).trim()
         ? String(email).trim().toLowerCase()
         : `admin_${cleanedPhone || Date.now()}@renttrack.app`;
@@ -378,13 +414,6 @@ export const verifyOtp = async (req: Request, res: Response) => {
         include: { organization: true },
       });
     } else {
-      const hasMissingDetails = !user.name || user.name.trim() === '' || !user.organization?.name || user.organization.name.trim() === '';
-      if (hasMissingDetails && (!adminName || !String(adminName).trim() || !orgName || !String(orgName).trim())) {
-        return res.status(400).json({
-          error: 'Basic details required: Please provide your Name and Organisation Name.',
-        });
-      }
-
       // If user exists and new orgName/adminName are supplied, update details
       if (adminName || orgName) {
         if (adminName && adminName.trim()) {
@@ -415,6 +444,12 @@ export const verifyOtp = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'User creation/update failed' });
     }
 
+    const isProfileCompleted = Boolean(
+      !isNewUser &&
+      user.name && user.name.trim() !== '' && user.name.trim() !== 'Property Owner' &&
+      user.organization && user.organization.name && user.organization.name.trim() !== '' && user.organization.name.trim() !== 'My Facility'
+    );
+
     const token = jwt.sign(
       { userId: user.id, orgId: user.organizationId, role: user.role },
       process.env.JWT_SECRET || 'secret',
@@ -425,6 +460,8 @@ export const verifyOtp = async (req: Request, res: Response) => {
       success: true,
       message: 'OTP verification successful',
       token,
+      isNewUser,
+      isProfileCompleted,
       user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role },
       organization: user.organization,
     });

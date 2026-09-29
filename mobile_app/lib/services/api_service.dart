@@ -68,12 +68,11 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     final userName = prefs.getString('renttrack_user_name');
     final orgName = prefs.getString('renttrack_org_name');
-    final planChosen = prefs.getBool('renttrack_plan_chosen') ?? false;
     
-    // Both user name and facility name must be set and not empty
-    if (userName == null || userName.trim().isEmpty) return false;
-    if (orgName == null || orgName.trim().isEmpty) return false;
-    return planChosen;
+    // Both user name and facility name must be set, non-empty, and not generic placeholders
+    if (userName == null || userName.trim().isEmpty || userName.trim() == 'Property Owner') return false;
+    if (orgName == null || orgName.trim().isEmpty || orgName.trim() == 'My Facility') return false;
+    return true;
   }
 
   static Future<void> markProfileCompleted({
@@ -103,6 +102,23 @@ class ApiService {
   }
 
   // ─── Auth ───────────────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> checkPhone(String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    for (final host in [_activeBaseUrl, ..._candidateHosts]) {
+      try {
+        final response = await http
+            .get(Uri.parse('$host/auth/check-phone/$cleaned'))
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          _activeBaseUrl = host;
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          return data;
+        }
+      } catch (_) {}
+    }
+    return {'exists': false};
+  }
 
   static Future<Map<String, dynamic>> sendOtp(String phone, {String? mode}) async {
     for (final host in [_activeBaseUrl, ..._candidateHosts]) {

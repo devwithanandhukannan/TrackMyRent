@@ -1133,32 +1133,6 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     }
   }
 
-  Future<void> _testUpiLink() async {
-    final upi = _upiController.text.trim();
-    if (upi.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a UPI ID')),
-      );
-      return;
-    }
-    final org = _profileOrgNameController.text.trim().isNotEmpty
-        ? _profileOrgNameController.text.trim()
-        : 'RentTrack';
-    final uri = Uri.parse('upi://pay?pa=$upi&pn=${Uri.encodeComponent(org)}&am=100&cu=INR');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No UPI application found on device'),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-      }
-    }
-  }
-
   // ─── TAB 3: PAYOUT (Matching Stitch settings_payout.html) ───────────────────
 
   Widget _buildPayoutTab() {
@@ -1353,55 +1327,6 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: AppColors.primary, width: 2),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Live Test Payment Simulation Box (Stitch design)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF2F4F6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Test Payment Simulation',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                            ),
-                            Text(
-                              'Sample: ₹100',
-                              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Verify your mobile banking app recognizes this Virtual Payment Address properly prior to automated tenant dispatch.',
-                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 38,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.launch_rounded, size: 16, color: Colors.white),
-                            label: const Text('Generate Sample UPI Link', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                            onPressed: _testUpiLink,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ],

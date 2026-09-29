@@ -18,6 +18,7 @@ import {
   sendPaymentReceipt,
   getPaymentLinkStatus,
   renderHostedPaymentGateway,
+  renderDigitalReceipt,
   submitUtrReference,
 } from '../controllers/paymentController';
 import { authMiddleware } from '../middleware/authMiddleware';
@@ -44,6 +45,7 @@ router.post('/send-receipt', authMiddleware, sendPaymentReceipt);
 // Public routes for tenants / members paying via UPI or checking link validity
 router.get('/link-status/:linkId', getPaymentLinkStatus);
 router.get('/pay/:id', renderHostedPaymentGateway);
+router.get('/receipt/:id', renderDigitalReceipt);
 router.post('/submit-utr', submitUtrReference);
 
 // Public Razorpay Webhook Endpoint

@@ -4,6 +4,7 @@ import {
   login,
   customerLogin,
   sendOtp,
+  checkPhoneExists,
   verifyOtp,
   getAllOrganizations,
   getOrganizationById,
@@ -17,6 +18,7 @@ const router = Router();
 router.post('/register', registerOrg);
 router.post('/login', login);
 router.post('/customer-login', customerLogin);
+router.get('/check-phone/:phone', checkPhoneExists);
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
 router.get('/organizations', getAllOrganizations);
